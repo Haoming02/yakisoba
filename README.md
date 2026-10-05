@@ -8,4 +8,6 @@
 <img src="https://img.shields.io/badge/JavaScript-010101?logo=javascript"> 
 <img src="https://img.shields.io/badge/CSS-010101?logo=css"> 
 <a href="https://v2.tauri.app/"><img src="https://img.shields.io/badge/tauri-010101?logo=tauri"></a>
+<br>
+<img width="128" src="./src/icon.png"> 
 </p>
