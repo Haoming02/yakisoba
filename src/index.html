@@ -5,24 +5,95 @@
   <meta charset="UTF-8" />
   <link rel="stylesheet" href="styles.css" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Tauri App</title>
+  <title>Yakisoba</title>
   <script type="module" src="/main.js" defer></script>
 </head>
 
 <body>
-  <main class="container">
-    <h1>Welcome to Tauri</h1>
-
-    <div class="row">
-      <img src="./icon.png" class="logo" alt="logo" />
+  <nav id="navbar">
+    <div class="brand">
+      <img src="./icon.png" alt="logo" />
+      <span>Yakisoba</span>
     </div>
+    <div class="tabs">
+      <button class="tab active" data-tab="installation">Installation</button>
+      <button class="tab" data-tab="paths">Paths</button>
+      <button class="tab" data-tab="parameters">Parameters</button>
+    </div>
+  </nav>
 
-    <form class="row" id="greet-form">
-      <input id="greet-input" placeholder="Enter a name..." />
-      <button type="submit">Greet</button>
-    </form>
-    <p id="greet-msg"></p>
+  <main id="content">
+    <section class="page active" id="page-installation">
+      <div class="field">
+        <label for="installation">Installation Path</label>
+        <div class="control">
+          <input id="installation" type="text" placeholder="C:/project/train" spellcheck="false" />
+          <button class="browse" data-target="installation" data-kind="dir">Browse</button>
+        </div>
+      </div>
+
+      <div class="status-row">
+        <span class="status" id="status-git"><i></i>git</span>
+        <span class="status" id="status-uv"><i></i>uv</span>
+        <span class="status" id="status-sd"><i></i>sd-scripts</span>
+      </div>
+
+      <button id="install-btn" class="install" disabled>Install</button>
+      <pre id="install-log" class="log" hidden></pre>
+    </section>
+
+    <section class="page" id="page-paths">
+      <div class="field">
+        <label for="checkpoint">Checkpoint Path</label>
+        <div class="control">
+          <input id="checkpoint" type="text" spellcheck="false" />
+          <button class="browse" data-target="checkpoint" data-kind="file">Browse</button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="text-encoder">Text Encoder Path</label>
+        <div class="control">
+          <input id="text-encoder" type="text" spellcheck="false" />
+          <button class="browse" data-target="text-encoder" data-kind="file">Browse</button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="vae">VAE Path</label>
+        <div class="control">
+          <input id="vae" type="text" spellcheck="false" />
+          <button class="browse" data-target="vae" data-kind="file">Browse</button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="dataset">Dataset Path</label>
+        <div class="control">
+          <input id="dataset" type="text" spellcheck="false" />
+          <button class="browse" data-target="dataset" data-kind="dir">Browse</button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="output">Output Path</label>
+        <div class="control">
+          <input id="output" type="text" spellcheck="false" />
+          <button class="browse" data-target="output" data-kind="dir">Browse</button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="output-name">Output Filename</label>
+        <div class="control">
+          <input id="output-name" type="text" placeholder="my_anima_lora" spellcheck="false" />
+        </div>
+      </div>
+    </section>
+
+    <section class="page" id="page-parameters">
+      <div id="parameters"></div>
+    </section>
   </main>
+
+  <footer id="footer">
+    <button id="train-btn" class="train">Train</button>
+  </footer>
 </body>
 
 </html>
