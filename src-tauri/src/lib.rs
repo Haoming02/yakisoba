@@ -111,6 +111,35 @@ fn run_stream(app: &AppHandle, program: &str, args: &[&str], cwd: &Path) -> Resu
     }
 }
 
+fn toml_string_value(toml: &str, key: &str) -> Option<String> {
+    let prefix = format!("{key} = ");
+    for line in toml.lines() {
+        let line = line.trim();
+        if !line.starts_with(&prefix) {
+            continue;
+        }
+        let value = line[prefix.len()..].trim();
+        if value.len() >= 2 && value.starts_with('"') && value.ends_with('"') {
+            let mut out = String::new();
+            let mut chars = value[1..value.len() - 1].chars();
+            while let Some(c) = chars.next() {
+                if c == '\\' {
+                    match chars.next() {
+                        Some('\\') => out.push('\\'),
+                        Some('"') => out.push('"'),
+                        Some(other) => out.push(other),
+                        None => {}
+                    }
+                } else {
+                    out.push(c);
+                }
+            }
+            return Some(out);
+        }
+    }
+    None
+}
+
 #[tauri::command]
 fn init_state(app: AppHandle) -> InitState {
     let config = read_config(&app);
@@ -130,6 +159,18 @@ fn init_state(app: AppHandle) -> InitState {
 #[tauri::command]
 fn save_config(app: AppHandle, config: Config) -> Result<(), String> {
     write_config(&app, &config)
+}
+
+#[tauri::command]
+fn open_config_folder(app: AppHandle) -> Result<(), String> {
+    let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    tauri_plugin_opener::open_path(&dir, None::<&str>).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn open_temp_folder() -> Result<(), String> {
+    tauri_plugin_opener::open_path(std::env::temp_dir(), None::<&str>).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -227,6 +268,20 @@ fn start_training(
         return Err("anima_train_network.py not found in the installation path".into());
     }
 
+    if let Some(checkpoint) = toml_string_value(&toml, "pretrained_model_name_or_path") {
+        if !Path::new(&checkpoint).is_file() {
+            return Err(format!("Checkpoint not found: {checkpoint}"));
+        }
+    }
+    if let Some(dataset) = toml_string_value(&toml, "train_data_dir") {
+        if !Path::new(&dataset).is_dir() {
+            return Err(format!("Dataset directory not found: {dataset}"));
+        }
+    }
+    if let Some(output) = toml_string_value(&toml, "output_dir") {
+        fs::create_dir_all(&output).map_err(|e| e.to_string())?;
+    }
+
     let param_file = std::env::temp_dir().join("yakisoba_param.toml");
     fs::write(&param_file, &toml).map_err(|e| e.to_string())?;
 
@@ -289,6 +344,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             init_state,
             save_config,
+            open_config_folder,
+            open_temp_folder,
             install,
             start_training,
             terminate_training

@@ -158,32 +158,6 @@ const PARAM_GROUPS = [
       { key: "wandb_run_name", label: "W&B Run Name", type: "string", default: "", optional: true },
     ],
   },
-  {
-    name: "Sampling",
-    fields: [
-      { key: "sample_prompts", label: "Sample Prompts File", type: "string", default: "", optional: true },
-      {
-        key: "sample_sampler",
-        label: "Sample Sampler",
-        type: "enum",
-        default: "euler_a",
-        options: [
-          "euler",
-          "euler_a",
-          "heun",
-          "dpm2",
-          "dpm++2s_a",
-          "dpm++2m",
-          "dpm++2mv2",
-          "ipndm",
-          "ipndm_v",
-          "lms",
-          "deis",
-          "ddim",
-        ],
-      },
-    ],
-  },
 ];
 
 const PATH_FIELDS = [
@@ -226,23 +200,33 @@ function notifyError(message) {
   })();
 }
 
+const STATUS_LABELS = { "status-git": "git", "status-uv": "uv", "status-sd": "sd-scripts" };
+
 function setStatus(id, ok) {
   const el = $(id);
   el.classList.toggle("ok", ok);
+  el.title = ok ? `${STATUS_LABELS[id]} is installed` : `${STATUS_LABELS[id]} is not installed`;
 }
 
 function updateInstallButton() {
   const btn = $("install-btn");
   if (installing) {
     btn.disabled = true;
+    btn.title = "Installation in progress";
     return;
   }
   if (status.sdScripts) {
     btn.disabled = true;
-  } else if (!(status.git && status.uv)) {
-    btn.disabled = true;
+    btn.title = "sd-scripts is already installed";
   } else {
-    btn.disabled = false;
+    const missing = [!status.git && "git", !status.uv && "uv"].filter(Boolean);
+    if (missing.length) {
+      btn.disabled = true;
+      btn.title = `Missing: ${missing.join(", ")}`;
+    } else {
+      btn.disabled = false;
+      btn.title = "Install sd-scripts";
+    }
   }
 }
 
@@ -258,7 +242,11 @@ function renderParameters() {
 
     const grid = document.createElement("div");
     grid.className = "grid";
-    for (const field of group.fields) {
+    const ordered = [
+      ...group.fields.filter((f) => f.type !== "bool"),
+      ...group.fields.filter((f) => f.type === "bool"),
+    ];
+    for (const field of ordered) {
       grid.appendChild(renderField(field));
     }
     section.appendChild(grid);
@@ -339,11 +327,11 @@ function tomlValue(field, raw) {
       return raw ? "true" : "false";
     case "int": {
       const n = parseInt(raw, 10);
-      return Number.isFinite(n) ? String(n) : "0";
+      return Number.isFinite(n) ? String(n) : String(field.default ?? 0);
     }
     case "float": {
       let n = parseFloat(raw);
-      if (!Number.isFinite(n)) n = 0;
+      if (!Number.isFinite(n)) n = Number(field.default) || 0;
       return Number.isInteger(n) ? n.toFixed(1) : String(n);
     }
     case "enum":
@@ -495,6 +483,12 @@ async function handleTrain() {
     return;
   }
 
+  const outputName = $("output-name").value.trim();
+  if (outputName && /[<>:"/\\|?*]/.test(outputName)) {
+    notifyError(`Invalid characters in output filename: <>:"/\\|?*`);
+    return;
+  }
+
   try {
     await invoke("start_training", { installPath, toml: buildToml() });
   } catch (e) {
@@ -524,6 +518,12 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   $("install-btn").addEventListener("click", handleInstall);
   $("train-btn").addEventListener("click", handleTrain);
+  $("open-config").addEventListener("click", () => {
+    invoke("open_config_folder").catch((e) => notifyError(String(e)));
+  });
+  $("open-temp").addEventListener("click", () => {
+    invoke("open_temp_folder").catch((e) => notifyError(String(e)));
+  });
 
   await listen("install-log", (event) => {
     const log = $("install-log");

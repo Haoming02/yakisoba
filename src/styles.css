@@ -109,7 +109,7 @@ body {
 
 .page {
   display: none;
-  max-width: 960px;
+  max-width: 1200px;
   margin: 0 auto;
 }
 
@@ -175,6 +175,12 @@ select:focus {
 
 .browse:hover {
   border-color: var(--accent);
+}
+
+.paths-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 24px;
 }
 
 /* Status indicators */
@@ -268,8 +274,13 @@ select:focus {
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
+}
+
+.param input,
+.param select {
+  width: 100%;
 }
 
 .param label {
@@ -337,7 +348,19 @@ select:focus {
   background: #b91c1c;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 1100px) {
+  .grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 820px) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
   #navbar {
     flex-direction: column;
     align-items: stretch;
@@ -345,5 +368,9 @@ select:focus {
 
   .tabs {
     justify-content: center;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
   }
 }
