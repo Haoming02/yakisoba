@@ -26,7 +26,6 @@ const PARAM_GROUPS = [
       { key: "network_module", label: "Network Module", type: "string", default: "networks.lora_anima" },
       { key: "network_dim", label: "Network Dim", type: "int", default: 8 },
       { key: "network_alpha", label: "Network Alpha", type: "int", default: 4 },
-      { key: "network_weights", label: "Resume From Weights", type: "string", default: "", optional: true },
       { key: "network_train_unet_only", label: "Train DiT Only", type: "bool", default: true },
       { key: "network_args", label: "Network Args", type: "list", default: [], hint: "comma separated" },
     ],
@@ -107,7 +106,6 @@ const PARAM_GROUPS = [
       { key: "huber_scale", label: "Huber Scale", type: "int", default: 1 },
       { key: "huber_c", label: "Huber C", type: "float", default: 0.1 },
       { key: "huber_schedule", label: "Huber Schedule", type: "enum", default: "snr", options: ["snr", "fixed"] },
-      { key: "masked_loss", label: "Masked Loss", type: "bool", default: true },
       { key: "prior_loss_weight", label: "Prior Loss Weight", type: "float", default: 0.5 },
       {
         key: "timestep_sampling",
@@ -155,7 +153,6 @@ const PARAM_GROUPS = [
       },
       { key: "save_every_n_epochs", label: "Save Every N Epochs", type: "int", default: 4 },
       { key: "metadata_author", label: "Metadata Author", type: "string", default: "", optional: true },
-      { key: "wandb_run_name", label: "W&B Run Name", type: "string", default: "", optional: true },
     ],
   },
 ];
@@ -166,6 +163,7 @@ const PATH_FIELDS = [
   { key: "vae", id: "vae" },
   { key: "train_data_dir", id: "dataset" },
   { key: "output_dir", id: "output" },
+  { key: "network_weights", id: "resume-weights" },
   { key: "output_name", id: "output-name" },
 ];
 
@@ -212,16 +210,22 @@ function updateInstallButton() {
   const btn = $("install-btn");
   if (installing) {
     btn.disabled = true;
+    btn.classList.remove("installed");
+    btn.textContent = "Installing...";
     btn.title = "Installation in progress";
     return;
   }
   if (status.sdScripts) {
     btn.disabled = true;
+    btn.classList.add("installed");
+    btn.textContent = "Installed";
     btn.title = "sd-scripts is already installed";
   } else {
+    btn.disabled = true;
+    btn.classList.remove("installed");
+    btn.textContent = "Install";
     const missing = [!status.git && "git", !status.uv && "uv"].filter(Boolean);
     if (missing.length) {
-      btn.disabled = true;
       btn.title = `Missing: ${missing.join(", ")}`;
     } else {
       btn.disabled = false;
@@ -259,6 +263,7 @@ function renderField(field) {
   wrap.className = "param";
 
   if (field.type === "bool") {
+    wrap.classList.add("param-bool");
     const label = document.createElement("label");
     label.className = "toggle";
     const input = document.createElement("input");
@@ -357,6 +362,8 @@ function buildToml() {
     if (value) lines.push(`${key} = ${tomlValue({ type: "string" }, value)}`);
   }
 
+  lines.push(`masked_loss = ${$("masked-loss").checked ? "true" : "false"}`);
+
   for (const group of PARAM_GROUPS) {
     for (const field of group.fields) {
       const el = $(`param-${field.key}`);
@@ -427,7 +434,7 @@ async function handleBrowse(button) {
       ? { directory: true }
       : {
         multiple: false,
-        filters: [{ name: "Model", extensions: ["safetensors", "ckpt", "pt", "pth", "bin", "safetensors"] }],
+        filters: [{ name: "Model", extensions: ["safetensors"] }],
       };
   const path = await open(options);
   if (path) {
@@ -447,12 +454,10 @@ async function handleInstall() {
   const log = $("install-log");
   log.hidden = false;
   log.textContent = "";
-  $("install-btn").textContent = "Installing...";
   try {
     await invoke("install", { path });
   } catch (e) {
     installing = false;
-    $("install-btn").textContent = "Install";
     if (!log.textContent) log.hidden = true;
     updateInstallButton();
     notifyError(String(e));
@@ -490,8 +495,19 @@ async function handleTrain() {
     return;
   }
 
+  const maskedLoss = $("masked-loss").checked;
+  const conditioningData = $("conditioning-data").value.trim();
+  if (maskedLoss && !conditioningData) {
+    notifyError("Conditioning Data Path is required when Masked Loss is enabled");
+    return;
+  }
+
   try {
-    await invoke("start_training", { installPath, toml: buildToml() });
+    await invoke("start_training", {
+      installPath,
+      toml: buildToml(),
+      conditioningDataDir: maskedLoss ? conditioningData : null,
+    });
   } catch (e) {
     notifyError(String(e));
   }
@@ -519,6 +535,9 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   $("install-btn").addEventListener("click", handleInstall);
   $("train-btn").addEventListener("click", handleTrain);
+  $("masked-loss").addEventListener("change", () => {
+    $("conditioning-field").hidden = !$("masked-loss").checked;
+  });
   $("open-config").addEventListener("click", () => {
     invoke("open_config_folder").catch((e) => notifyError(String(e)));
   });
@@ -536,12 +555,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     installing = false;
     const log = $("install-log");
     if (event.payload === "ok") {
-      const btn = $("install-btn");
-      btn.textContent = "Installed";
-      btn.classList.add("installed");
       await refresh();
     } else {
-      $("install-btn").textContent = "Install";
       if (!log.textContent) log.hidden = true;
       updateInstallButton();
       notifyError(String(event.payload).replace(/^error::/, ""));

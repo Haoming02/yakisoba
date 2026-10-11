@@ -247,8 +247,8 @@ select:focus {
 
 .install.installed,
 .install.installed:disabled {
-  background: var(--green);
-  color: #fff;
+  background: var(--panel-alt);
+  color: var(--grey);
   cursor: default;
 }
 
@@ -305,14 +305,16 @@ select:focus {
   margin-top: 4px;
 }
 
-.toggle {
+label.toggle {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
+  margin: 0;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--panel);
+  text-transform: none;
   cursor: pointer;
   user-select: none;
 }
@@ -320,7 +322,17 @@ select:focus {
 .toggle input {
   width: 18px;
   height: 18px;
+  margin: 0;
   accent-color: var(--accent);
+}
+
+.field .toggle {
+  display: inline-flex;
+}
+
+.param-bool {
+  display: flex;
+  align-items: flex-end;
 }
 
 /* Footer */

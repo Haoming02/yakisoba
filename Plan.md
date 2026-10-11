@@ -4,25 +4,38 @@ This is a **Tauri** (`src`: `pnpm` + `Javascript` / `src-tauri`: `cargo` + `Rust
 
 ## Installation
 
-- Default the installation path to "sd-scripts" folder under "Documents" (filled in, not just placeholder)
-- Error if the path is a file (current behavior)
-- If the path is not empty, try to `git clone` into it
-    - e.g. Given "Documents", result in "Documents/sd-scripts"
-    - Error if "sd-scripts" already exists
-- If the path is empty, treat it as the target folder
-    - i.e. `cd` the parent folder, and `git clone` with that folder as the name
-- If the path does not exists, treat it as the target folder too, and create all intermediate folders as needed
-- Remember to save the actual final folder to the config
-- Hide the logs box if it's empty after an error (e.g. when the given path is invalid)
-- When the installation succeed, change the button to green and the text to "Installed" (only on fresh install ; in future launches, just disable the button (current behavior))
-- Set the status indicators to use default cursor (instead of text)
+- Remove the green color style after installation. Instead, streamline both fresh successful install and future launches (if installed):
+    1. Disable the "Install" button (current behavior)
+    2. Darken the color slightly (current behavior)
+    3. Change the text to "Installed"
+    4. Keep the default cursor
 
 ## Paths
 
-- Add the placeholders:
-    - Checkpoint: "anima-base-v1.0.safetensors"
-    - Text Encoder: "qwen_3_06b_base.safetensors"
-    - VAE: "qwen_image_vae.safetensors"
-- Remove the placeholder for Output Filename
-- Fix the "Open Folder" buttons
-    - Right now they open the desired folders correctly, but also open a file dialogue. Stop the latter.
+- Add tool tips:
+    - Open Config Folder: Open the folder that contains the config file that saves the paths
+    - Open Temp Folder: Open the folder that contains the last training `.toml`
+    - (rewrite for better clarity)
+
+## Parameters
+
+- Update the styling for checkbox types
+    - Right now items within a row are aligned on the top. But since other types have the texts, the background of checkbox thus appears higher than others.
+    - Within the background, the text appears lower than the checkbox instead
+    - Fix both
+- Move the "Resume From Weights" into the Paths tab, under "Output Path", with a Browse button too
+    - Make the Browse button file extension for Checkpoint, Text Encoder, VAE, and Resume From Weights filter `.safetensors` only
+- Remove "W&B Run Name"
+
+## Masked Training
+
+- Move the "Masked Loss" checkbox into the Paths tab, under "Dataset Path", and default it to disabled
+- Add a new folder "Conditioning Data Path" with browse button, which only shows up when "Masked Loss" is enabled
+- When training, if "Masked Loss" is enabled, additionally pass the following flag at the end of the call
+
+    ```bash
+    --conditioning_data_dir <path-to-Conditioning-Data>
+    ```
+
+    - `masked_loss` is still saved to the `.toml` (current behavior)
+    - If "Masked Loss" is enabled, error if "Conditioning Data Path" is not provided

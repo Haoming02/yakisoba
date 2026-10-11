@@ -72,10 +72,28 @@
         </div>
       </div>
       <div class="field">
+        <label class="toggle" for="masked-loss"><input id="masked-loss" type="checkbox" /><span>Masked
+            Loss</span></label>
+      </div>
+      <div class="field" id="conditioning-field" hidden>
+        <label for="conditioning-data">Conditioning Data Path</label>
+        <div class="control">
+          <input id="conditioning-data" type="text" spellcheck="false" />
+          <button class="browse" data-target="conditioning-data" data-kind="dir">Browse</button>
+        </div>
+      </div>
+      <div class="field">
         <label for="output">Output Path</label>
         <div class="control">
           <input id="output" type="text" spellcheck="false" />
           <button class="browse" data-target="output" data-kind="dir">Browse</button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="resume-weights">Resume From Weights</label>
+        <div class="control">
+          <input id="resume-weights" type="text" spellcheck="false" />
+          <button class="browse" data-target="resume-weights" data-kind="file">Browse</button>
         </div>
       </div>
       <div class="field">
@@ -85,8 +103,10 @@
         </div>
       </div>
       <div class="paths-actions">
-        <button id="open-config" class="browse">Open Config Folder</button>
-        <button id="open-temp" class="browse">Open Temp Folder</button>
+        <button id="open-config" class="browse"
+          title="Open the folder containing the config file that saves your paths">Open Config Folder</button>
+        <button id="open-temp" class="browse" title="Open the folder containing the last training config (.toml)">Open
+          Temp Folder</button>
       </div>
     </section>
 

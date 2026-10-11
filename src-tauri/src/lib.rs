@@ -284,6 +284,7 @@ fn start_training(
     state: State<'_, TrainState>,
     install_path: String,
     toml: String,
+    conditioning_data_dir: Option<String>,
 ) -> Result<(), String> {
     if state.lock().map_err(|e| e.to_string())?.is_some() {
         return Err("Training is already running".into());
@@ -316,6 +317,12 @@ fn start_training(
         fs::create_dir_all(&output).map_err(|e| e.to_string())?;
     }
 
+    if let Some(dir) = &conditioning_data_dir {
+        if !Path::new(dir).is_dir() {
+            return Err(format!("Conditioning data directory not found: {dir}"));
+        }
+    }
+
     let param_file = std::env::temp_dir().join("yakisoba_param.toml");
     fs::write(&param_file, &toml).map_err(|e| e.to_string())?;
 
@@ -324,6 +331,9 @@ fn start_training(
         .arg("--config_file")
         .arg(&param_file)
         .current_dir(&install);
+    if let Some(dir) = &conditioning_data_dir {
+        cmd.arg("--conditioning_data_dir").arg(dir);
+    }
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
