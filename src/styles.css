@@ -202,6 +202,7 @@ select:focus {
   color: var(--muted);
   font-weight: 600;
   font-size: 13px;
+  cursor: default;
 }
 
 .status i {
@@ -242,6 +243,13 @@ select:focus {
   background: var(--panel-alt);
   color: var(--grey);
   cursor: not-allowed;
+}
+
+.install.installed,
+.install.installed:disabled {
+  background: var(--green);
+  color: #fff;
+  cursor: default;
 }
 
 .log {

@@ -403,7 +403,7 @@ async function refresh() {
   setStatus("status-uv", status.uv);
   setStatus("status-sd", status.sdScripts);
 
-  $("installation").value = state.config.installation || "";
+  $("installation").value = state.config.installation || state.defaultInstallation || "";
   $("checkpoint").value = state.config.checkpoint || "";
   $("text-encoder").value = state.config.textEncoder || "";
   $("vae").value = state.config.vae || "";
@@ -426,9 +426,9 @@ async function handleBrowse(button) {
     kind === "dir"
       ? { directory: true }
       : {
-          multiple: false,
-          filters: [{ name: "Model", extensions: ["safetensors", "ckpt", "pt", "pth", "bin", "safetensors"] }],
-        };
+        multiple: false,
+        filters: [{ name: "Model", extensions: ["safetensors", "ckpt", "pt", "pth", "bin", "safetensors"] }],
+      };
   const path = await open(options);
   if (path) {
     $(target).value = path;
@@ -453,6 +453,7 @@ async function handleInstall() {
   } catch (e) {
     installing = false;
     $("install-btn").textContent = "Install";
+    if (!log.textContent) log.hidden = true;
     updateInstallButton();
     notifyError(String(e));
   }
@@ -508,7 +509,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     });
   });
 
-  document.querySelectorAll(".browse").forEach((button) => {
+  document.querySelectorAll(".browse[data-target]").forEach((button) => {
     button.addEventListener("click", () => handleBrowse(button));
   });
 
@@ -533,10 +534,15 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   await listen("install-done", async (event) => {
     installing = false;
-    $("install-btn").textContent = "Install";
+    const log = $("install-log");
     if (event.payload === "ok") {
+      const btn = $("install-btn");
+      btn.textContent = "Installed";
+      btn.classList.add("installed");
       await refresh();
     } else {
+      $("install-btn").textContent = "Install";
+      if (!log.textContent) log.hidden = true;
       updateInstallButton();
       notifyError(String(event.payload).replace(/^error::/, ""));
     }

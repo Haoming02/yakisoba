@@ -46,21 +46,21 @@
       <div class="field">
         <label for="checkpoint">Checkpoint Path</label>
         <div class="control">
-          <input id="checkpoint" type="text" spellcheck="false" />
+          <input id="checkpoint" type="text" placeholder="anima-base-v1.0.safetensors" spellcheck="false" />
           <button class="browse" data-target="checkpoint" data-kind="file">Browse</button>
         </div>
       </div>
       <div class="field">
         <label for="text-encoder">Text Encoder Path</label>
         <div class="control">
-          <input id="text-encoder" type="text" spellcheck="false" />
+          <input id="text-encoder" type="text" placeholder="qwen_3_06b_base.safetensors" spellcheck="false" />
           <button class="browse" data-target="text-encoder" data-kind="file">Browse</button>
         </div>
       </div>
       <div class="field">
         <label for="vae">VAE Path</label>
         <div class="control">
-          <input id="vae" type="text" spellcheck="false" />
+          <input id="vae" type="text" placeholder="qwen_image_vae.safetensors" spellcheck="false" />
           <button class="browse" data-target="vae" data-kind="file">Browse</button>
         </div>
       </div>
@@ -81,7 +81,7 @@
       <div class="field">
         <label for="output-name">Output Filename</label>
         <div class="control">
-          <input id="output-name" type="text" placeholder="my_anima_lora" spellcheck="false" />
+          <input id="output-name" type="text" spellcheck="false" />
         </div>
       </div>
       <div class="paths-actions">

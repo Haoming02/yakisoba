@@ -4,6 +4,7 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
+use tauri::path::BaseDirectory;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 type TrainState = Arc<Mutex<Option<u32>>>;
@@ -25,6 +26,14 @@ struct InitState {
     git: bool,
     uv: bool,
     sd_scripts: bool,
+    default_installation: String,
+}
+
+fn default_installation(app: &AppHandle) -> String {
+    app.path()
+        .resolve("sd-scripts", BaseDirectory::Document)
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default()
 }
 
 fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -153,6 +162,7 @@ fn init_state(app: AppHandle) -> InitState {
         git,
         uv,
         sd_scripts,
+        default_installation: default_installation(&app),
     }
 }
 
@@ -173,6 +183,11 @@ fn open_temp_folder() -> Result<(), String> {
     tauri_plugin_opener::open_path(std::env::temp_dir(), None::<&str>).map_err(|e| e.to_string())
 }
 
+fn dir_is_empty(path: &Path) -> Result<bool, String> {
+    let mut entries = fs::read_dir(path).map_err(|e| e.to_string())?;
+    Ok(entries.next().is_none())
+}
+
 #[tauri::command]
 fn install(app: AppHandle, path: String) -> Result<(), String> {
     let target = PathBuf::from(&path);
@@ -182,27 +197,39 @@ fn install(app: AppHandle, path: String) -> Result<(), String> {
     if target.is_file() {
         return Err("Installation path points to a file".into());
     }
-    if target.exists() {
-        let mut entries = fs::read_dir(&target).map_err(|e| e.to_string())?;
-        if entries.next().is_some() {
-            return Err("Installation path is not empty".into());
+
+    let (clone_cwd, clone_name, final_dir) = if target.exists() && !dir_is_empty(&target)? {
+        let clone_dest = target.join("sd-scripts");
+        if clone_dest.exists() {
+            return Err("sd-scripts already exists in the installation path".into());
         }
+        (target.clone(), None, clone_dest)
     } else {
-        fs::create_dir_all(&target).map_err(|e| e.to_string())?;
-    }
+        if !target.exists() {
+            fs::create_dir_all(&target).map_err(|e| e.to_string())?;
+        }
+        let parent = target
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .ok_or("Installation path has no parent directory")?;
+        let name = target
+            .file_name()
+            .ok_or("Installation path has no folder name")?
+            .to_string_lossy()
+            .to_string();
+        (parent.to_path_buf(), Some(name), target.clone())
+    };
 
     let worker = app.clone();
     std::thread::spawn(move || {
         let result = (|| -> Result<PathBuf, String> {
-            run_stream(
-                &worker,
-                "git",
-                &["clone", "https://github.com/kohya-ss/sd-scripts"],
-                &target,
-            )?;
-            let sd_scripts = target.join("sd-scripts");
-            run_stream(&worker, "uv", &["venv", "venv"], &sd_scripts)?;
-            let python = venv_python(&sd_scripts).to_string_lossy().to_string();
+            let mut clone_args: Vec<&str> = vec!["clone", "https://github.com/kohya-ss/sd-scripts"];
+            if let Some(name) = &clone_name {
+                clone_args.push(name);
+            }
+            run_stream(&worker, "git", &clone_args, &clone_cwd)?;
+            run_stream(&worker, "uv", &["venv", "venv"], &final_dir)?;
+            let python = venv_python(&final_dir).to_string_lossy().to_string();
             run_stream(
                 &worker,
                 "uv",
@@ -217,15 +244,22 @@ fn install(app: AppHandle, path: String) -> Result<(), String> {
                     "--python",
                     &python,
                 ],
-                &sd_scripts,
+                &final_dir,
             )?;
             run_stream(
                 &worker,
                 "uv",
-                &["pip", "install", "-r", "requirements.txt", "--python", &python],
-                &sd_scripts,
+                &[
+                    "pip",
+                    "install",
+                    "-r",
+                    "requirements.txt",
+                    "--python",
+                    &python,
+                ],
+                &final_dir,
             )?;
-            Ok(sd_scripts)
+            Ok(final_dir)
         })();
 
         match result {
@@ -296,7 +330,9 @@ fn start_training(
         cmd.creation_flags(0x0000_0010); // CREATE_NEW_CONSOLE so the training logs are visible
     }
 
-    let child = cmd.spawn().map_err(|e| format!("Failed to start training: {e}"))?;
+    let child = cmd
+        .spawn()
+        .map_err(|e| format!("Failed to start training: {e}"))?;
     let pid = child.id();
     *state.lock().map_err(|e| e.to_string())? = Some(pid);
     let _ = app.emit("train-status", true);

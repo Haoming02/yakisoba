@@ -2,30 +2,27 @@ This is a **Tauri** (`src`: `pnpm` + `Javascript` / `src-tauri`: `cargo` + `Rust
 
 ---
 
-## Layouts
-
-- Make the content container slightly wider. No need to squeeze everything in a square.
-- For the Parameters tab
-    - Change to 4 instead of 3 columns
-    - Right now a checkbox is way higher than number or dropdown in the same row. Reorder the fields so that different types are in different rows, to look more aligned.
-    - Right now, the field only takes up ~75% of the width, causing the right side looks way emptier than the left side. Make the field span across its column (with margin).
-
 ## Installation
 
-- Add hover tooltip to the "git", "uv", "sd-scripts" indicators that shows whether the item is installed
-- Add hover tooltip to the "Install" button that shows which item is still missing, or that the sd-scripts is already installed
+- Default the installation path to "sd-scripts" folder under "Documents" (filled in, not just placeholder)
+- Error if the path is a file (current behavior)
+- If the path is not empty, try to `git clone` into it
+    - e.g. Given "Documents", result in "Documents/sd-scripts"
+    - Error if "sd-scripts" already exists
+- If the path is empty, treat it as the target folder
+    - i.e. `cd` the parent folder, and `git clone` with that folder as the name
+- If the path does not exists, treat it as the target folder too, and create all intermediate folders as needed
+- Remember to save the actual final folder to the config
+- Hide the logs box if it's empty after an error (e.g. when the given path is invalid)
+- When the installation succeed, change the button to green and the text to "Installed" (only on fresh install ; in future launches, just disable the button (current behavior))
+- Set the status indicators to use default cursor (instead of text)
 
 ## Paths
 
-- Add 2 buttons that open the config and the temp folder respectively
-
-## Parameters
-
-- Remove the Sampling section
-
----
-
-## Sanity Check
-
-- Go over all functions again to check if the inputs are always validated
-- Ensure that dependencies are installed within the venv, and the training call is using the venv
+- Add the placeholders:
+    - Checkpoint: "anima-base-v1.0.safetensors"
+    - Text Encoder: "qwen_3_06b_base.safetensors"
+    - VAE: "qwen_image_vae.safetensors"
+- Remove the placeholder for Output Filename
+- Fix the "Open Folder" buttons
+    - Right now they open the desired folders correctly, but also open a file dialogue. Stop the latter.
