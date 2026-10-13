@@ -23,11 +23,16 @@ const PARAM_GROUPS = [
   {
     name: "Network",
     fields: [
-      { key: "network_module", label: "Network Module", type: "string", default: "networks.lora_anima" },
+      {
+        key: "network_module",
+        label: "Network Module",
+        type: "string",
+        default: "networks.lora_anima",
+        disabled: true,
+      },
       { key: "network_dim", label: "Network Dim", type: "int", default: 8 },
       { key: "network_alpha", label: "Network Alpha", type: "int", default: 4 },
-      { key: "network_train_unet_only", label: "Train DiT Only", type: "bool", default: true },
-      { key: "network_args", label: "Network Args", type: "list", default: [], hint: "comma separated" },
+      { key: "network_train_unet_only", label: "Train DiT Only", type: "bool", default: true, disabled: true },
     ],
   },
   {
@@ -54,15 +59,15 @@ const PARAM_GROUPS = [
         default: "inductor",
         options: ["none", "cudagraphs", "inductor", "explain", "aot_eager"],
       },
-      { key: "highvram", label: "High VRAM", type: "bool", default: true },
       { key: "xformers", label: "Xformers", type: "bool", default: true },
+      { key: "highvram", label: "High VRAM", type: "bool", default: false },
     ],
   },
   {
     name: "Learning Rate & Optimizer",
     fields: [
       { key: "learning_rate", label: "Learning Rate", type: "float", default: 0.1 },
-      { key: "unet_lr", label: "DiT Learning Rate", type: "float", default: 0.1 },
+      { key: "unet_lr", label: "DiT Learning Rate", type: "float", default: 0.1, disabled: true },
       {
         key: "optimizer_type",
         label: "Optimizer Type",
@@ -80,7 +85,13 @@ const PARAM_GROUPS = [
   {
     name: "Data & Buckets",
     fields: [
-      { key: "resolution", label: "Resolution", type: "string", default: "1024,1024" },
+      {
+        key: "resolution",
+        label: "Resolution",
+        type: "enum",
+        default: "1024",
+        options: ["512", "768", "1024", "1280", "1536"],
+      },
       { key: "enable_bucket", label: "Enable Bucket", type: "bool", default: true },
       { key: "bucket_reso_steps", label: "Bucket Reso Steps", type: "int", default: 64 },
       { key: "bucket_no_upscale", label: "Bucket No Upscale", type: "bool", default: true },
@@ -90,7 +101,7 @@ const PARAM_GROUPS = [
       { key: "shuffle_caption", label: "Shuffle Caption", type: "bool", default: true },
       { key: "keep_tokens", label: "Keep Tokens", type: "int", default: 2 },
       { key: "cache_latents", label: "Cache Latents", type: "bool", default: true },
-      { key: "skip_cache_check", label: "Skip Cache Check", type: "bool", default: true },
+      { key: "skip_cache_check", label: "Skip Cache Check", type: "bool", default: false },
     ],
   },
   {
@@ -116,14 +127,6 @@ const PARAM_GROUPS = [
       },
       { key: "discrete_flow_shift", label: "Discrete Flow Shift", type: "float", default: 1.0 },
       { key: "sigmoid_scale", label: "Sigmoid Scale", type: "float", default: 1.0 },
-      {
-        key: "noise_offset_type",
-        label: "Noise Offset Type",
-        type: "enum",
-        default: "Original",
-        options: ["Original", "Radial"],
-      },
-      { key: "max_timestep", label: "Max Timestep", type: "int", default: 1000 },
     ],
   },
   {
@@ -143,13 +146,14 @@ const PARAM_GROUPS = [
         type: "enum",
         default: "safetensors",
         options: ["safetensors", "ckpt", "diffusers", "diffusers_safetensors"],
+        disabled: true,
       },
       {
         key: "save_precision",
         label: "Save Precision",
         type: "enum",
         default: "bf16",
-        options: ["no_save", "fp16", "bf16", "fp32"],
+        options: ["fp16", "bf16", "fp32"],
       },
       { key: "save_every_n_epochs", label: "Save Every N Epochs", type: "int", default: 4 },
       { key: "metadata_author", label: "Metadata Author", type: "string", default: "", optional: true },
@@ -200,9 +204,15 @@ function notifyError(message) {
 
 const STATUS_LABELS = { "status-git": "git", "status-uv": "uv", "status-sd": "sd-scripts" };
 
+const INSTALL_LINKS = {
+  "status-git": "https://git-scm.com/install",
+  "status-uv": "https://github.com/astral-sh/uv#installation",
+};
+
 function setStatus(id, ok) {
   const el = $(id);
   el.classList.toggle("ok", ok);
+  el.classList.toggle("clickable", !ok && id in INSTALL_LINKS);
   el.title = ok ? `${STATUS_LABELS[id]} is installed` : `${STATUS_LABELS[id]} is not installed`;
 }
 
@@ -270,6 +280,10 @@ function renderField(field) {
     input.type = "checkbox";
     input.id = `param-${field.key}`;
     input.checked = Boolean(field.default);
+    if (field.disabled) {
+      input.disabled = true;
+      label.style.cursor = "default";
+    }
     const text = document.createElement("span");
     text.textContent = field.label;
     label.appendChild(input);
@@ -303,6 +317,7 @@ function renderField(field) {
     }
     input.id = `param-${field.key}`;
     input.spellcheck = false;
+    input.autocomplete = "off";
     if (field.type === "list") {
       input.placeholder = field.hint || "comma separated";
       input.value = (field.default || []).join(", ");
@@ -311,6 +326,7 @@ function renderField(field) {
     }
   }
   input.id = `param-${field.key}`;
+  if (field.disabled) input.disabled = true;
   wrap.appendChild(input);
 
   if (field.hint && field.type !== "list") {
@@ -340,6 +356,8 @@ function tomlValue(field, raw) {
       return Number.isInteger(n) ? n.toFixed(1) : String(n);
     }
     case "enum":
+      if (field.key === "resolution") return `"${escapeToml(raw)},${escapeToml(raw)}"`;
+      return `"${escapeToml(raw)}"`;
     case "string":
       return `"${escapeToml(raw)}"`;
     case "list": {
@@ -531,6 +549,18 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   CONFIG_FIELDS.forEach(({ id }) => {
     $(id).addEventListener("change", scheduleSaveConfig);
+  });
+
+  Object.entries(INSTALL_LINKS).forEach(([id, url]) => {
+    $(id).addEventListener("click", () => {
+      if (!$(id).classList.contains("ok")) {
+        invoke("open_url", { url }).catch((e) => notifyError(String(e)));
+      }
+    });
+  });
+
+  $("param-learning_rate").addEventListener("input", () => {
+    $("param-unet_lr").value = $("param-learning_rate").value;
   });
 
   $("install-btn").addEventListener("click", handleInstall);

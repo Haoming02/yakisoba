@@ -212,6 +212,10 @@ select:focus {
   background: var(--grey);
 }
 
+.status.clickable {
+  cursor: pointer;
+}
+
 .status.ok {
   color: var(--green);
   border-color: var(--green);
@@ -303,6 +307,22 @@ select:focus {
   color: var(--grey);
   font-size: 12px;
   margin-top: 4px;
+}
+
+.param input:disabled,
+.param select:disabled {
+  background: var(--bg-alt);
+  color: var(--grey);
+  cursor: not-allowed;
+}
+
+.param input:disabled:focus,
+.param select:disabled:focus {
+  border-color: var(--border);
+}
+
+.param-bool input:disabled {
+  pointer-events: none;
 }
 
 label.toggle {

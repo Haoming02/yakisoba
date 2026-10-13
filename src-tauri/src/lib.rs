@@ -183,6 +183,11 @@ fn open_temp_folder() -> Result<(), String> {
     tauri_plugin_opener::open_path(std::env::temp_dir(), None::<&str>).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn open_url(url: String) -> Result<(), String> {
+    tauri_plugin_opener::open_url(url, None::<&str>).map_err(|e| e.to_string())
+}
+
 fn dir_is_empty(path: &Path) -> Result<bool, String> {
     let mut entries = fs::read_dir(path).map_err(|e| e.to_string())?;
     Ok(entries.next().is_none())
@@ -392,6 +397,7 @@ pub fn run() {
             save_config,
             open_config_folder,
             open_temp_folder,
+            open_url,
             install,
             start_training,
             terminate_training
