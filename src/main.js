@@ -19,6 +19,15 @@ const OPTIMIZERS = [
 
 const LR_SCHEDULERS = ["adafactor", "constant", "constant_with_warmup", "cosine", "cosine_with_restarts", "linear"];
 
+const DEFAULT_WORKERS = (() => {
+  try {
+    const n = Math.floor(window.navigator.hardwareConcurrency / 2);
+    return Number.isFinite(n) ? n : 0;
+  } catch (e) {
+    return 0;
+  }
+})();
+
 const PARAM_GROUPS = [
   {
     name: "Network",
@@ -32,6 +41,7 @@ const PARAM_GROUPS = [
       },
       { key: "network_dim", label: "Network Dim", type: "int", default: 8 },
       { key: "network_alpha", label: "Network Alpha", type: "int", default: 4 },
+      { key: "network_dropout", label: "Network Dropout", type: "float", default: 0.0 },
       { key: "network_train_unet_only", label: "Train DiT Only", type: "bool", default: true, disabled: true },
     ],
   },
@@ -39,11 +49,12 @@ const PARAM_GROUPS = [
     name: "Training",
     fields: [
       { key: "train_batch_size", label: "Batch Size", type: "int", default: 2 },
-      { key: "epoch", label: "Epoch", type: "int", default: 16 },
-      { key: "max_train_steps", label: "Max Train Steps", type: "int", default: 0 },
+      { key: "max_train_epochs", label: "Max Train Epochs", type: "int", default: 16, epochSteps: true },
+      { key: "max_train_steps", label: "Max Train Steps", type: "int", default: 0, epochSteps: true },
       { key: "seed", label: "Seed", type: "int", default: 1337 },
-      { key: "max_data_loader_n_workers", label: "Data Loader Workers", type: "int", default: 0 },
+      { key: "max_data_loader_n_workers", label: "Data Loader Workers", type: "int", default: DEFAULT_WORKERS },
       { key: "gradient_accumulation_steps", label: "Gradient Accumulation Steps", type: "int", default: 1 },
+      { key: "max_grad_norm", label: "Max Grad Norm", type: "float", default: 1.0 },
       { key: "gradient_checkpointing", label: "Gradient Checkpointing", type: "bool", default: true },
       {
         key: "mixed_precision",
@@ -61,6 +72,9 @@ const PARAM_GROUPS = [
       },
       { key: "xformers", label: "Xformers", type: "bool", default: true },
       { key: "highvram", label: "High VRAM", type: "bool", default: false },
+      { key: "lowram", label: "Low RAM", type: "bool", default: false },
+      { key: "cuda_allow_tf32", label: "CUDA Allow TF32", type: "bool", default: false },
+      { key: "persistent_data_loader_workers", label: "Persistent Data Loader Workers", type: "bool", default: false },
     ],
   },
   {
@@ -80,6 +94,8 @@ const PARAM_GROUPS = [
       { key: "lr_scheduler_num_cycles", label: "LR Scheduler Num Cycles", type: "int", default: 1 },
       { key: "lr_scheduler_power", label: "LR Scheduler Power", type: "int", default: 1 },
       { key: "lr_scheduler_args", label: "LR Scheduler Args", type: "list", default: [], hint: "comma separated" },
+      { key: "lr_warmup_steps", label: "LR Warmup Steps", type: "int", default: 0 },
+      { key: "scale_weight_norms", label: "Scale Weight Norms", type: "float", default: 0.0 },
     ],
   },
   {
@@ -98,8 +114,19 @@ const PARAM_GROUPS = [
       { key: "min_bucket_reso", label: "Min Bucket Reso", type: "int", default: 768 },
       { key: "max_bucket_reso", label: "Max Bucket Reso", type: "int", default: 1536 },
       { key: "caption_extension", label: "Caption Extension", type: "string", default: ".txt" },
-      { key: "shuffle_caption", label: "Shuffle Caption", type: "bool", default: true },
+      {
+        key: "shuffle_caption",
+        label: "Caption Processing",
+        type: "radio",
+        default: "shuffle_caption",
+        options: [
+          { key: "shuffle_caption", label: "Shuffle Caption" },
+          { key: "cache_text_encoder_outputs", label: "Cache Text Encoder Outputs" },
+        ],
+      },
       { key: "keep_tokens", label: "Keep Tokens", type: "int", default: 2 },
+      { key: "caption_dropout_rate", label: "Caption Dropout Rate", type: "float", default: 0.0 },
+      { key: "caption_tag_dropout_rate", label: "Caption Tag Dropout Rate", type: "float", default: 0.0 },
       { key: "cache_latents", label: "Cache Latents", type: "bool", default: true },
       { key: "skip_cache_check", label: "Skip Cache Check", type: "bool", default: false },
     ],
@@ -127,6 +154,7 @@ const PARAM_GROUPS = [
       },
       { key: "discrete_flow_shift", label: "Discrete Flow Shift", type: "float", default: 1.0 },
       { key: "sigmoid_scale", label: "Sigmoid Scale", type: "float", default: 1.0 },
+      { key: "debiased_estimation_loss", label: "Debiased Estimation Loss", type: "bool", default: false },
     ],
   },
   {
@@ -184,6 +212,30 @@ let training = false;
 let installing = false;
 
 const $ = (id) => document.getElementById(id);
+
+const EPOCH_STEPS_KEYS = ["max_train_epochs", "max_train_steps"];
+let lastEditedEpochSteps = "max_train_epochs";
+
+function epochStepsValue(key) {
+  const n = parseInt($(`param-${key}`).value, 10);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function activeEpochSteps() {
+  const other = lastEditedEpochSteps === "max_train_epochs" ? "max_train_steps" : "max_train_epochs";
+  if (epochStepsValue(lastEditedEpochSteps) !== 0) return lastEditedEpochSteps;
+  if (epochStepsValue(other) !== 0) return other;
+  return null;
+}
+
+function updateEpochStepsUI() {
+  const active = activeEpochSteps();
+  for (const key of EPOCH_STEPS_KEYS) {
+    $(`param-${key}`)
+      .closest(".param")
+      .classList.toggle("dimmed", key !== active);
+  }
+}
 
 function notifyError(message) {
   const body = String(message);
@@ -292,6 +344,25 @@ function renderField(field) {
     return wrap;
   }
 
+  if (field.type === "radio") {
+    wrap.classList.add("param-radio");
+    for (const option of field.options) {
+      const label = document.createElement("label");
+      label.className = "toggle";
+      const input = document.createElement("input");
+      input.type = "radio";
+      input.name = `param-${field.key}`;
+      input.id = `param-${option.key}`;
+      input.checked = option.key === field.default;
+      const text = document.createElement("span");
+      text.textContent = option.label;
+      label.appendChild(input);
+      label.appendChild(text);
+      wrap.appendChild(label);
+    }
+    return wrap;
+  }
+
   const label = document.createElement("label");
   label.htmlFor = `param-${field.key}`;
   label.textContent = field.label;
@@ -374,6 +445,7 @@ function tomlValue(field, raw) {
 
 function buildToml() {
   const lines = [];
+  const epochStepsActive = activeEpochSteps();
 
   for (const { key, id } of PATH_FIELDS) {
     const value = $(id).value.trim();
@@ -384,6 +456,17 @@ function buildToml() {
 
   for (const group of PARAM_GROUPS) {
     for (const field of group.fields) {
+      if (field.type === "radio") {
+        const selected = field.options.find((o) => $(`param-${o.key}`).checked);
+        if (selected) lines.push(`${selected.key} = true`);
+        continue;
+      }
+      if (field.epochSteps) {
+        if (field.key === epochStepsActive) {
+          lines.push(`${field.key} = ${tomlValue(field, $(`param-${field.key}`).value)}`);
+        }
+        continue;
+      }
       const el = $(`param-${field.key}`);
       if (!el) continue;
       if (field.type === "bool") {
@@ -562,6 +645,14 @@ window.addEventListener("DOMContentLoaded", async () => {
   $("param-learning_rate").addEventListener("input", () => {
     $("param-unet_lr").value = $("param-learning_rate").value;
   });
+
+  for (const key of EPOCH_STEPS_KEYS) {
+    $(`param-${key}`).addEventListener("input", () => {
+      lastEditedEpochSteps = key;
+      updateEpochStepsUI();
+    });
+  }
+  updateEpochStepsUI();
 
   $("install-btn").addEventListener("click", handleInstall);
   $("train-btn").addEventListener("click", handleTrain);

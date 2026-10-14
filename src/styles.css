@@ -325,6 +325,16 @@ select:focus {
   pointer-events: none;
 }
 
+.param.dimmed {
+  opacity: 0.4;
+}
+
+.param-radio {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 label.toggle {
   display: flex;
   align-items: center;

@@ -10,6 +10,8 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 type TrainState = Arc<Mutex<Option<u32>>>;
 
+const VAE_2D_MAX_SIZE: u64 = 200 * 1024 * 1024;
+
 #[derive(Serialize, Deserialize, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Config {
@@ -327,7 +329,7 @@ fn start_training(
     app: AppHandle,
     state: State<'_, TrainState>,
     install_path: String,
-    toml: String,
+    mut toml: String,
     conditioning_data_dir: Option<String>,
 ) -> Result<(), String> {
     if state.lock().map_err(|e| e.to_string())?.is_some() {
@@ -364,6 +366,14 @@ fn start_training(
     if let Some(dir) = &conditioning_data_dir {
         if !Path::new(dir).is_dir() {
             return Err(format!("Conditioning data directory not found: {dir}"));
+        }
+    }
+
+    if let Some(vae) = toml_string_value(&toml, "vae") {
+        if let Ok(meta) = fs::metadata(&vae) {
+            if meta.len() < VAE_2D_MAX_SIZE {
+                toml.push_str("qwen_image_vae_2d = true\n");
+            }
         }
     }
 
