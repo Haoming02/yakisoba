@@ -2,27 +2,17 @@ This is a **Tauri** (`src`: `pnpm` + `Javascript` / `src-tauri`: `cargo` + `Rust
 
 ---
 
-## Web
-
-- Disable auto-complete for every text input
-
-## Installation
-
-- For the "git" and "uv" indicators, when they are not installed, change the cursor to `pointer`, and open the following site when clicked:
-    - git: https://git-scm.com/install
-    - uv: https://github.com/astral-sh/uv#installation
-
-## Paths
-
-- Change the tool tip of "Open Config Folder" to "Open the folder containing the paths config (.json)"
-
 ## Parameters
 
-- Disable the interaction for "Network Module", "Train DiT Only", "DiT Learning Rate", "Save Model As"
-    - still serialize them
-- Sync "DiT Learning Rate" to "Learning Rate"
-    - i.e. when Learning Rate is changed, update "DiT Learning Rate" to be the same
-- Remove "Network Args", "Noise Offset Type", "Max Timestep"
-- Remove "no_save" option from "Save Precision"
-- Default "High VRAM" and "Skip Cache Check" to off
-- Change "Resolution" to a dropdown, with option 512, 768, 1024, 1280, 1536. When serializing, still save as "512,512", etc.
+- Default "Max Train Steps" to 0
+- Default "Seed" to 1337
+- Default "Learning Rate" & "DiT Learning Rate" to 1.0
+- Default "Optimizer Type" to "Prodigy"
+- Default "Prior Loss Weight" to 1.0
+- Default "VAE Batch Size" to 1
+
+## Training
+
+- Change the training config path from `<tauri-temp-folder>/yakisoba_param.toml` to `<tauri-config-folder>/training/<YYYYMMDD-hhmmss>.toml`
+- Update the training process call with the new path
+- Change "Open Temp Folder" to "Open Training Folder", and opens the new path on click

@@ -40,8 +40,8 @@ const PARAM_GROUPS = [
     fields: [
       { key: "train_batch_size", label: "Batch Size", type: "int", default: 2 },
       { key: "epoch", label: "Epoch", type: "int", default: 16 },
-      { key: "max_train_steps", label: "Max Train Steps", type: "int", default: 288 },
-      { key: "seed", label: "Seed", type: "int", default: 2023 },
+      { key: "max_train_steps", label: "Max Train Steps", type: "int", default: 0 },
+      { key: "seed", label: "Seed", type: "int", default: 1337 },
       { key: "max_data_loader_n_workers", label: "Data Loader Workers", type: "int", default: 0 },
       { key: "gradient_accumulation_steps", label: "Gradient Accumulation Steps", type: "int", default: 1 },
       { key: "gradient_checkpointing", label: "Gradient Checkpointing", type: "bool", default: true },
@@ -66,13 +66,13 @@ const PARAM_GROUPS = [
   {
     name: "Learning Rate & Optimizer",
     fields: [
-      { key: "learning_rate", label: "Learning Rate", type: "float", default: 0.1 },
-      { key: "unet_lr", label: "DiT Learning Rate", type: "float", default: 0.1, disabled: true },
+      { key: "learning_rate", label: "Learning Rate", type: "float", default: 1.0 },
+      { key: "unet_lr", label: "DiT Learning Rate", type: "float", default: 1.0, disabled: true },
       {
         key: "optimizer_type",
         label: "Optimizer Type",
         type: "enum",
-        default: "optimizer.prodigy_plus_schedulefree.ProdigyPlusScheduleFree",
+        default: "Prodigy",
         options: OPTIMIZERS,
       },
       { key: "optimizer_args", label: "Optimizer Args", type: "list", default: [], hint: "comma separated" },
@@ -117,7 +117,7 @@ const PARAM_GROUPS = [
       { key: "huber_scale", label: "Huber Scale", type: "int", default: 1 },
       { key: "huber_c", label: "Huber C", type: "float", default: 0.1 },
       { key: "huber_schedule", label: "Huber Schedule", type: "enum", default: "snr", options: ["snr", "fixed"] },
-      { key: "prior_loss_weight", label: "Prior Loss Weight", type: "float", default: 0.5 },
+      { key: "prior_loss_weight", label: "Prior Loss Weight", type: "float", default: 1.0 },
       {
         key: "timestep_sampling",
         label: "Timestep Sampling",
@@ -132,7 +132,7 @@ const PARAM_GROUPS = [
   {
     name: "VAE & Encoding",
     fields: [
-      { key: "vae_batch_size", label: "VAE Batch Size", type: "int", default: 4 },
+      { key: "vae_batch_size", label: "VAE Batch Size", type: "int", default: 1 },
       { key: "qwen3_max_token_length", label: "Qwen3 Max Token Length", type: "int", default: 512 },
       { key: "t5_max_token_length", label: "T5 Max Token Length", type: "int", default: 512 },
     ],
@@ -571,8 +571,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   $("open-config").addEventListener("click", () => {
     invoke("open_config_folder").catch((e) => notifyError(String(e)));
   });
-  $("open-temp").addEventListener("click", () => {
-    invoke("open_temp_folder").catch((e) => notifyError(String(e)));
+  $("open-training").addEventListener("click", () => {
+    invoke("open_training_folder").catch((e) => notifyError(String(e)));
   });
 
   await listen("install-log", (event) => {

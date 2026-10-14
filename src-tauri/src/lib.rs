@@ -4,6 +4,7 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::path::BaseDirectory;
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -40,6 +41,16 @@ fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     Ok(dir.join("config.json"))
+}
+
+fn training_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| e.to_string())?
+        .join("training");
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir)
 }
 
 fn read_config(app: &AppHandle) -> Config {
@@ -179,8 +190,9 @@ fn open_config_folder(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn open_temp_folder() -> Result<(), String> {
-    tauri_plugin_opener::open_path(std::env::temp_dir(), None::<&str>).map_err(|e| e.to_string())
+fn open_training_folder(app: AppHandle) -> Result<(), String> {
+    let dir = training_dir(&app)?;
+    tauri_plugin_opener::open_path(&dir, None::<&str>).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -283,6 +295,33 @@ fn install(app: AppHandle, path: String) -> Result<(), String> {
     Ok(())
 }
 
+fn timestamp() -> String {
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let days = (secs / 86400) as i64;
+    let tod = secs % 86400;
+    let z = days + 719468;
+    let era = if z >= 0 { z } else { z - 146096 } / 146097;
+    let doe = (z - era * 146097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe as i64 + era * 400 + if m <= 2 { 1 } else { 0 };
+    format!(
+        "{:04}{:02}{:02}-{:02}{:02}{:02}",
+        y,
+        m,
+        d,
+        tod / 3600,
+        (tod % 3600) / 60,
+        tod % 60
+    )
+}
+
 #[tauri::command]
 fn start_training(
     app: AppHandle,
@@ -328,7 +367,7 @@ fn start_training(
         }
     }
 
-    let param_file = std::env::temp_dir().join("yakisoba_param.toml");
+    let param_file = training_dir(&app)?.join(format!("{}.toml", timestamp()));
     fs::write(&param_file, &toml).map_err(|e| e.to_string())?;
 
     let mut cmd = Command::new(&python);
@@ -396,7 +435,7 @@ pub fn run() {
             init_state,
             save_config,
             open_config_folder,
-            open_temp_folder,
+            open_training_folder,
             open_url,
             install,
             start_training,
