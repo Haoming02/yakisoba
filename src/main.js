@@ -17,7 +17,15 @@ const OPTIMIZERS = [
   "Prodigy",
 ];
 
-const LR_SCHEDULERS = ["adafactor", "constant", "constant_with_warmup", "cosine", "cosine_with_restarts", "linear"];
+const LR_SCHEDULERS = [
+  "adafactor",
+  "constant",
+  "constant_with_warmup",
+  "cosine",
+  "cosine_with_restarts",
+  "linear",
+  "polynomial",
+];
 
 const DEFAULT_WORKERS = (() => {
   try {
@@ -55,7 +63,6 @@ const PARAM_GROUPS = [
       { key: "max_data_loader_n_workers", label: "Data Loader Workers", type: "int", default: DEFAULT_WORKERS },
       { key: "gradient_accumulation_steps", label: "Gradient Accumulation Steps", type: "int", default: 1 },
       { key: "max_grad_norm", label: "Max Grad Norm", type: "float", default: 1.0 },
-      { key: "gradient_checkpointing", label: "Gradient Checkpointing", type: "bool", default: true },
       {
         key: "mixed_precision",
         label: "Mixed Precision",
@@ -63,25 +70,17 @@ const PARAM_GROUPS = [
         default: "bf16",
         options: ["no", "fp16", "bf16", "fp32"],
       },
-      {
-        key: "dynamo_backend",
-        label: "Dynamo Backend",
-        type: "enum",
-        default: "inductor",
-        options: ["none", "cudagraphs", "inductor", "explain", "aot_eager"],
-      },
-      { key: "xformers", label: "Xformers", type: "bool", default: true },
+      { key: "persistent_data_loader_workers", label: "Persistent Data Loader Workers", type: "bool", default: false },
+      { key: "gradient_checkpointing", label: "Gradient Checkpointing", type: "bool", default: true },
+      { key: "xformers", label: "xformers", type: "bool", default: true },
+      { key: "cuda_allow_tf32", label: "CUDA Allow TF32", type: "bool", default: false },
       { key: "highvram", label: "High VRAM", type: "bool", default: false },
       { key: "lowram", label: "Low RAM", type: "bool", default: false },
-      { key: "cuda_allow_tf32", label: "CUDA Allow TF32", type: "bool", default: false },
-      { key: "persistent_data_loader_workers", label: "Persistent Data Loader Workers", type: "bool", default: false },
     ],
   },
   {
     name: "Learning Rate & Optimizer",
     fields: [
-      { key: "learning_rate", label: "Learning Rate", type: "float", default: 1.0 },
-      { key: "unet_lr", label: "DiT Learning Rate", type: "float", default: 1.0, disabled: true },
       {
         key: "optimizer_type",
         label: "Optimizer Type",
@@ -89,13 +88,15 @@ const PARAM_GROUPS = [
         default: "Prodigy",
         options: OPTIMIZERS,
       },
+      { key: "learning_rate", label: "Learning Rate", type: "float", default: 1.0 },
+      { key: "unet_lr", label: "DiT Learning Rate", type: "float", default: 1.0, disabled: true },
       { key: "optimizer_args", label: "Optimizer Args", type: "list", default: [], hint: "comma separated" },
       { key: "lr_scheduler", label: "LR Scheduler", type: "enum", default: "constant", options: LR_SCHEDULERS },
-      { key: "lr_scheduler_num_cycles", label: "LR Scheduler Num Cycles", type: "int", default: 1 },
-      { key: "lr_scheduler_power", label: "LR Scheduler Power", type: "int", default: 1 },
-      { key: "lr_scheduler_args", label: "LR Scheduler Args", type: "list", default: [], hint: "comma separated" },
       { key: "lr_warmup_steps", label: "LR Warmup Steps", type: "int", default: 0 },
       { key: "scale_weight_norms", label: "Scale Weight Norms", type: "float", default: 0.0 },
+      { key: "lr_scheduler_args", label: "LR Scheduler Args", type: "list", default: [], hint: "comma separated" },
+      { key: "lr_scheduler_num_cycles", label: "LR Scheduler Num Cycles", type: "int", default: 1 },
+      { key: "lr_scheduler_power", label: "LR Scheduler Power", type: "int", default: 1 },
     ],
   },
   {
@@ -110,9 +111,7 @@ const PARAM_GROUPS = [
       },
       { key: "enable_bucket", label: "Enable Bucket", type: "bool", default: true },
       { key: "bucket_reso_steps", label: "Bucket Reso Steps", type: "int", default: 64 },
-      { key: "bucket_no_upscale", label: "Bucket No Upscale", type: "bool", default: true },
-      { key: "min_bucket_reso", label: "Min Bucket Reso", type: "int", default: 768 },
-      { key: "max_bucket_reso", label: "Max Bucket Reso", type: "int", default: 1536 },
+      { key: "bucket_no_upscale", label: "Bucket No Upscale", type: "bool", default: true, disabled: true },
       { key: "caption_extension", label: "Caption Extension", type: "string", default: ".txt" },
       {
         key: "shuffle_caption",
@@ -144,16 +143,14 @@ const PARAM_GROUPS = [
       { key: "huber_scale", label: "Huber Scale", type: "int", default: 1 },
       { key: "huber_c", label: "Huber C", type: "float", default: 0.1 },
       { key: "huber_schedule", label: "Huber Schedule", type: "enum", default: "snr", options: ["snr", "fixed"] },
-      { key: "prior_loss_weight", label: "Prior Loss Weight", type: "float", default: 1.0 },
       {
         key: "timestep_sampling",
         label: "Timestep Sampling",
         type: "enum",
         default: "sigmoid",
-        options: ["sigma", "uniform", "sigmoid", "shift", "flux_shift"],
+        options: ["sigmoid", "shift"],
       },
-      { key: "discrete_flow_shift", label: "Discrete Flow Shift", type: "float", default: 1.0 },
-      { key: "sigmoid_scale", label: "Sigmoid Scale", type: "float", default: 1.0 },
+      { key: "prior_loss_weight", label: "Prior Loss Weight", type: "float", default: 1.0 },
       { key: "debiased_estimation_loss", label: "Debiased Estimation Loss", type: "bool", default: false },
     ],
   },
@@ -188,6 +185,33 @@ const PARAM_GROUPS = [
     ],
   },
 ];
+
+const CONDITIONAL_FIELDS = [
+  {
+    controller: "lr_scheduler",
+    options: ["cosine_with_restarts", "polynomial"],
+    targets: ["lr_scheduler_num_cycles", "lr_scheduler_power"],
+  },
+  {
+    controller: "loss_type",
+    options: ["huber", "smooth_l1"],
+    targets: ["huber_scale", "huber_c", "huber_schedule"],
+  },
+  {
+    controller: "enable_bucket",
+    targets: ["bucket_reso_steps", "bucket_no_upscale"],
+  },
+];
+
+function updateConditionalFields() {
+  for (const { controller, options, targets } of CONDITIONAL_FIELDS) {
+    const el = $(`param-${controller}`);
+    const active = options ? options.includes(el.value) : el.checked;
+    for (const key of targets) {
+      $(`param-${key}`).closest(".param").hidden = !active;
+    }
+  }
+}
 
 const PATH_FIELDS = [
   { key: "pretrained_model_name_or_path", id: "checkpoint" },
@@ -476,6 +500,9 @@ function buildToml() {
       const raw = el.value;
       if (field.optional && String(raw).trim() === "") continue;
       lines.push(`${field.key} = ${tomlValue(field, raw)}`);
+      if (field.key === "timestep_sampling" && raw === "shift") {
+        lines.push(`discrete_flow_shift = 3.0`);
+      }
     }
   }
 
@@ -616,6 +643,11 @@ async function handleTrain() {
 
 window.addEventListener("DOMContentLoaded", async () => {
   renderParameters();
+
+  updateConditionalFields();
+  for (const { controller } of CONDITIONAL_FIELDS) {
+    $(`param-${controller}`).addEventListener("change", updateConditionalFields);
+  }
 
   document.querySelectorAll(".tab").forEach((tab) => {
     tab.addEventListener("click", () => {

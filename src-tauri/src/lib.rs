@@ -249,6 +249,11 @@ fn install(app: AppHandle, path: String) -> Result<(), String> {
             run_stream(&worker, "git", &clone_args, &clone_cwd)?;
             run_stream(&worker, "uv", &["venv", "venv"], &final_dir)?;
             let python = venv_python(&final_dir).to_string_lossy().to_string();
+            let triton = if cfg!(windows) {
+                "triton-windows<3.9.0"
+            } else {
+                "triton<3.9.0"
+            };
             run_stream(
                 &worker,
                 "uv",
@@ -258,6 +263,7 @@ fn install(app: AppHandle, path: String) -> Result<(), String> {
                     "torch==2.14.0+cu130",
                     "torchvision==0.29.0+cu130",
                     "xformers",
+                    triton,
                     "--extra-index-url",
                     "https://download.pytorch.org/whl/cu130",
                     "--python",
