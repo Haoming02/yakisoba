@@ -529,6 +529,22 @@ function scheduleSaveConfig() {
   }, 400);
 }
 
+let checkTimer = null;
+function scheduleCheckInstallation() {
+  clearTimeout(checkTimer);
+  checkTimer = setTimeout(async () => {
+    let ok = false;
+    try {
+      ok = await invoke("check_installation", { path: $("installation").value.trim() });
+    } catch (e) {
+      ok = false;
+    }
+    status.sdScripts = ok;
+    setStatus("status-sd", ok);
+    updateInstallButton();
+  }, 400);
+}
+
 async function refresh() {
   const state = await invoke("init_state");
   status.git = state.git;
@@ -568,6 +584,7 @@ async function handleBrowse(button) {
   if (path) {
     $(target).value = path;
     if (CONFIG_FIELDS.some((f) => f.id === target)) scheduleSaveConfig();
+    if (target === "installation") scheduleCheckInstallation();
   }
 }
 
@@ -665,6 +682,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   CONFIG_FIELDS.forEach(({ id }) => {
     $(id).addEventListener("change", scheduleSaveConfig);
   });
+
+  $("installation").addEventListener("input", scheduleCheckInstallation);
 
   Object.entries(INSTALL_LINKS).forEach(([id, url]) => {
     $(id).addEventListener("click", () => {

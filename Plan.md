@@ -2,37 +2,16 @@ This is a **Tauri** (`src`: `pnpm` + `Javascript` / `src-tauri`: `cargo` + `Rust
 
 ---
 
-## Parameters
+## Installation
 
-#### Training
+- Update the `sd-scripts` check to:
+    1. The path exists & is folder & is not empty
+    2. README.md exists & contains "sd-scripts" in the first line
+    3. The path contains a "venv" subfolder
+    4. Trying to `import library` (inside `venv`) succeed
 
-- Remove "Dynamo Backend"
-- Reorder Checkbox: Persistent Data Loader Workers, Gradient Checkpoint, xformers (change label to lower case), CUDA Allow TF32, High VRAM, Low RAM
+- Perform the above checks when "Installation Path" is edited too
+    - i.e. pointing the path to an existing installation should greenlight the indicator too
 
-#### Learning Rate & Optimizer
-
-- Move "Optimizer Type" to the first field
-- Add "polynomial" as the last option to "LR Scheduler"
-- Hide "LR Scheduler Num Cycles" and "LR Scheduler Power" by default
-    - Only show them when "LR Scheduler" is `cosine_with_restarts` or `polynomial`
-- Swap the order between "LR Warmup Steps & Scale Weight Norms" with "LR Scheduler Num Cycles & LR Scheduler Power"
-    - i.e. place the 2 now-hidden fields at the end
-
-#### Data & Buckets
-
-- Remove "Min Bucket Reso" and "Max Bucket Reso"
-- Disable "Bucket No Upscale" (still serialize)
-- Hide "Bucket Reso Steps" and "Bucket No Upscale" if "Enable Bucket" is disabled
-
-#### Loss & Timestep
-
-- Hide "Huber Scale", "Huber C", "Huber Schedule" by default
-    - Only show them when "Loss Type" is `huber` or `smooth_l1`
-- For "Timestep Sampling", keep only "sigmoid" and "shift" options
-- Remove "Discrete Flow Shift" and "Sigmoid Scale"
-- If "Timestep Sampling" is "shift", additionally serialize "discrete_flow_shift" with value of `3` (otherwise omit)
-- Move "Prior Loss Weight" to before "Debiased Estimation Loss"
-
-## Install
-
-- In the call that installs `torch` & `xformers`, add "triton-windows<3.9.0" or "triton<3.9.0" depending on OS
+- Additionally, when clicking install, perform the above checks again. If 3. or 4. fails, then skip the `git clone` and simply install the Python packages as usual
+    - i.e. to support cloned but not setup repo

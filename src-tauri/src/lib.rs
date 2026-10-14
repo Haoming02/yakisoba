@@ -72,9 +72,12 @@ fn write_config(app: &AppHandle, config: &Config) -> Result<(), String> {
     fs::write(&path, body).map_err(|e| e.to_string())
 }
 
-fn cmd_ok(program: &str, args: &[&str]) -> bool {
+fn cmd_ok(program: &str, args: &[&str], cwd: Option<&Path>) -> bool {
     let mut cmd = Command::new(program);
     cmd.args(args);
+    if let Some(dir) = cwd {
+        cmd.current_dir(dir);
+    }
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -90,6 +93,51 @@ fn venv_python(base: &Path) -> PathBuf {
     } else {
         base.join("venv").join("bin").join("python")
     }
+}
+
+struct ScriptsState {
+    cloned: bool,
+    venv: bool,
+    library: bool,
+}
+
+impl ScriptsState {
+    fn installed(&self) -> bool {
+        self.cloned && self.venv && self.library
+    }
+}
+
+fn scripts_state(path: &str) -> ScriptsState {
+    let mut state = ScriptsState {
+        cloned: false,
+        venv: false,
+        library: false,
+    };
+    if path.is_empty() {
+        return state;
+    }
+    let dir = Path::new(path);
+    if !dir.is_dir() || dir_is_empty(dir).unwrap_or(true) {
+        return state;
+    }
+    if let Ok(file) = fs::File::open(dir.join("README.md")) {
+        if let Some(Ok(line)) = BufReader::new(file).lines().next() {
+            state.cloned = line.contains("sd-scripts");
+        }
+    }
+    if !state.cloned {
+        return state;
+    }
+    state.venv = dir.join("venv").is_dir();
+    if state.venv {
+        let python = venv_python(dir);
+        state.library = cmd_ok(
+            &python.to_string_lossy(),
+            &["-c", "import library"],
+            Some(dir),
+        );
+    }
+    state
 }
 
 fn run_stream(app: &AppHandle, program: &str, args: &[&str], cwd: &Path) -> Result<(), String> {
@@ -165,11 +213,9 @@ fn toml_string_value(toml: &str, key: &str) -> Option<String> {
 #[tauri::command]
 fn init_state(app: AppHandle) -> InitState {
     let config = read_config(&app);
-    let git = cmd_ok("git", &["--version"]);
-    let uv = cmd_ok("uv", &["--version"]);
-    let sd_scripts = !config.installation.is_empty()
-        && Path::new(&config.installation).is_dir()
-        && Path::new(&config.installation).join("venv").is_dir();
+    let git = cmd_ok("git", &["--version"], None);
+    let uv = cmd_ok("uv", &["--version"], None);
+    let sd_scripts = scripts_state(&config.installation).installed();
     InitState {
         config,
         git,
@@ -177,6 +223,11 @@ fn init_state(app: AppHandle) -> InitState {
         sd_scripts,
         default_installation: default_installation(&app),
     }
+}
+
+#[tauri::command]
+fn check_installation(path: String) -> bool {
+    scripts_state(&path).installed()
 }
 
 #[tauri::command]
@@ -217,7 +268,10 @@ fn install(app: AppHandle, path: String) -> Result<(), String> {
         return Err("Installation path points to a file".into());
     }
 
-    let (clone_cwd, clone_name, final_dir) = if target.exists() && !dir_is_empty(&target)? {
+    let scripts = scripts_state(&path);
+    let (clone_cwd, clone_name, final_dir) = if scripts.cloned {
+        (target.clone(), None, target.clone())
+    } else if target.exists() && !dir_is_empty(&target)? {
         let clone_dest = target.join("sd-scripts");
         if clone_dest.exists() {
             return Err("sd-scripts already exists in the installation path".into());
@@ -239,15 +293,22 @@ fn install(app: AppHandle, path: String) -> Result<(), String> {
         (parent.to_path_buf(), Some(name), target.clone())
     };
 
+    let skip_clone = scripts.cloned;
+    let has_venv = scripts.venv;
     let worker = app.clone();
     std::thread::spawn(move || {
         let result = (|| -> Result<PathBuf, String> {
-            let mut clone_args: Vec<&str> = vec!["clone", "https://github.com/kohya-ss/sd-scripts"];
-            if let Some(name) = &clone_name {
-                clone_args.push(name);
+            if !skip_clone {
+                let mut clone_args: Vec<&str> =
+                    vec!["clone", "https://github.com/kohya-ss/sd-scripts"];
+                if let Some(name) = &clone_name {
+                    clone_args.push(name);
+                }
+                run_stream(&worker, "git", &clone_args, &clone_cwd)?;
             }
-            run_stream(&worker, "git", &clone_args, &clone_cwd)?;
-            run_stream(&worker, "uv", &["venv", "venv"], &final_dir)?;
+            if !has_venv {
+                run_stream(&worker, "uv", &["venv", "venv"], &final_dir)?;
+            }
             let python = venv_python(&final_dir).to_string_lossy().to_string();
             let triton = if cfg!(windows) {
                 "triton-windows<3.9.0"
@@ -449,6 +510,7 @@ pub fn run() {
         .manage(Arc::new(Mutex::new(None::<u32>)))
         .invoke_handler(tauri::generate_handler![
             init_state,
+            check_installation,
             save_config,
             open_config_folder,
             open_training_folder,
