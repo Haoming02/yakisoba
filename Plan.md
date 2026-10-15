@@ -2,25 +2,38 @@ This is a **Tauri** (`src`: `pnpm` + `Javascript` / `src-tauri`: `cargo` + `Rust
 
 ---
 
-## Dataset Configs
+## Installation
 
-- Remove "Dataset Path" from "Paths" tab
-- Add a new "Dataset" tab between "Paths" and "Parameters"
+- Update the `git clone` command to clone the `v0.12.0` tag specifically, with `--filter blob:none` and `--depth 1` flags added
 
-> Reference https://raw.githubusercontent.com/kohya-ss/sd-scripts/refs/heads/main/docs/config_README-en.md for how the `.toml` works
+## Paths
 
-- At the top of the "Dataset" tab, add a drag & drop field that accepts only folders
-    - If the Tauri-native feature cannot block files, then simply do nothing when a file is dropped
+- Remove "Masked Loss" and "Conditioning Data Path" fields (and the related visibility logics)
 
-- Next are multiple entries (created dynamically), each entry refers to a folder and includes "is_reg" (default `false`), "image_dir", "class_tokens", "keep_tokens" (default `0`), and "num_repeats" fields. Also add a remove button to delete the entry.
+## Dataset
 
-- If the dropped folder contains multiple subfolders with name `<num>_<name>`, load each subfolder as an entry, with the "class_tokens" set to the `<name>` and the "num_repeats" set to the `<num>`
-- ElseIf the dropped folder is named `<num>_<name>`, load it as an entry with the same rule
-- Else, load the folder still, with the "class_tokens" being the folder name and "num_repeats" default to `1`
+- Change the text of the drag&drop field to "Drag & Drop Dataset Folder(s) Here"
+- Change the text of the button to "Add Empty Entry"
+- Within each Entry, change the layout to two rows
+    - Change "Image Dir" to "Image Folder"; Keep "Class Tokens" ; Move "Reg" checkbox to the end, and rename to "Is Reg"
+    - Add a `conditioning_data_dir` (also use "folder" in label) field with browse button ; move the "Keep Tokens" and "Num Repeats" here (equal width as "Class Tokens") ; Keep "Remove" button
+- Error if not **all** or **none** of entries contain `conditioning_data_dir`
+    - i.e. cannot mix
+- When serializing, omit `conditioning_data_dir` if empty (same behavior as `is_reg`)
+- If all subsets contain `conditioning_data_dir`, then add `masked_loss = true` to the parameter `.toml` again
 
-- When starting training, serialize these into `<YYYYMMDD-hhmmss>-D.toml` in the same `training` folder, and pass to the training call using the `--dataset_config` flag
-    - Exclude the `[general]` part, those are already handled in "Parameters" ; the parent `[[datasets]]` should contain no values either, those are already handled in `[[datasets.subsets]]`
+> These have been verified to work ; no need to validate
 
 ## Parameters
 
-- Remove "Keep Tokens" field
+- Reorder **Data & Buckets**:
+
+```
+Resolution ; Caption Extension ; Shuffle Caption, Cache Text Encoder Outputs
+Caption Dropout Rate ; Caption Tag Dropout Rate ; Cache Latents ; Skip Cache Check
+Enable Bucket ; Bucket No Upscale ; Bucket Reso Steps
+```
+
+- Make disabling "Enable Bucket" also hide "Bucket No Upscale"
+- Flatten "Shuffle Caption" & "Cache Text Encoder Outputs" horizontally (instead of stacking vertically)
+- Join their background together, so the radio appears as the same group, span across 2 "columns"

@@ -109,9 +109,6 @@ const PARAM_GROUPS = [
         default: "1024",
         options: ["512", "768", "1024", "1280", "1536"],
       },
-      { key: "enable_bucket", label: "Enable Bucket", type: "bool", default: true },
-      { key: "bucket_reso_steps", label: "Bucket Reso Steps", type: "int", default: 64 },
-      { key: "bucket_no_upscale", label: "Bucket No Upscale", type: "bool", default: true, disabled: true },
       { key: "caption_extension", label: "Caption Extension", type: "string", default: ".txt" },
       {
         key: "shuffle_caption",
@@ -127,6 +124,9 @@ const PARAM_GROUPS = [
       { key: "caption_tag_dropout_rate", label: "Caption Tag Dropout Rate", type: "float", default: 0.0 },
       { key: "cache_latents", label: "Cache Latents", type: "bool", default: true },
       { key: "skip_cache_check", label: "Skip Cache Check", type: "bool", default: false },
+      { key: "enable_bucket", label: "Enable Bucket", type: "bool", default: true },
+      { key: "bucket_no_upscale", label: "Bucket No Upscale", type: "bool", default: true, disabled: true },
+      { key: "bucket_reso_steps", label: "Bucket Reso Steps", type: "int", default: 64 },
     ],
   },
   {
@@ -254,6 +254,7 @@ function addDatasetEntry(fields = {}) {
     isReg: false,
     imageDir: "",
     classTokens: "",
+    conditioningDataDir: "",
     keepTokens: 0,
     numRepeats: 1,
     ...fields,
@@ -300,23 +301,9 @@ function renderDatasetEntries() {
     const row = document.createElement("div");
     row.className = "dataset-entry";
 
-    const reg = document.createElement("label");
-    reg.className = "toggle";
-    const regInput = document.createElement("input");
-    regInput.type = "checkbox";
-    regInput.checked = entry.isReg;
-    regInput.addEventListener("change", () => {
-      entry.isReg = regInput.checked;
-    });
-    const regText = document.createElement("span");
-    regText.textContent = "Reg";
-    reg.appendChild(regInput);
-    reg.appendChild(regText);
-    row.appendChild(reg);
-
     row.appendChild(
       entryField(
-        "Image Dir",
+        "Image Folder",
         entry.imageDir,
         (v) => {
           entry.imageDir = v.trim();
@@ -328,6 +315,31 @@ function renderDatasetEntries() {
       entryField("Class Tokens", entry.classTokens, (v) => {
         entry.classTokens = v.trim();
       }),
+    );
+
+    const reg = document.createElement("label");
+    reg.className = "toggle entry-reg";
+    const regInput = document.createElement("input");
+    regInput.type = "checkbox";
+    regInput.checked = entry.isReg;
+    regInput.addEventListener("change", () => {
+      entry.isReg = regInput.checked;
+    });
+    const regText = document.createElement("span");
+    regText.textContent = "Is Reg";
+    reg.appendChild(regInput);
+    reg.appendChild(regText);
+    row.appendChild(reg);
+
+    row.appendChild(
+      entryField(
+        "Conditioning Data Folder",
+        entry.conditioningDataDir,
+        (v) => {
+          entry.conditioningDataDir = v.trim();
+        },
+        { id: `entry-cond-${index}`, browse: true },
+      ),
     );
     row.appendChild(
       entryField(
@@ -485,11 +497,7 @@ function renderParameters() {
 
     const grid = document.createElement("div");
     grid.className = "grid";
-    const ordered = [
-      ...group.fields.filter((f) => f.type !== "bool"),
-      ...group.fields.filter((f) => f.type === "bool"),
-    ];
-    for (const field of ordered) {
+    for (const field of group.fields) {
       grid.appendChild(renderField(field));
     }
     section.appendChild(grid);
@@ -629,7 +637,9 @@ function buildToml() {
     if (value) lines.push(`${key} = ${tomlValue({ type: "string" }, value)}`);
   }
 
-  lines.push(`masked_loss = ${$("masked-loss").checked ? "true" : "false"}`);
+  if (datasetEntries.length && datasetEntries.every((e) => e.conditioningDataDir)) {
+    lines.push("masked_loss = true");
+  }
 
   for (const group of PARAM_GROUPS) {
     for (const field of group.fields) {
@@ -670,6 +680,9 @@ function buildDatasetToml() {
     lines.push(`class_tokens = ${tomlValue({ type: "string" }, entry.classTokens)}`);
     lines.push(`num_repeats = ${tomlValue({ type: "int" }, entry.numRepeats)}`);
     lines.push(`keep_tokens = ${tomlValue({ type: "int" }, entry.keepTokens)}`);
+    if (entry.conditioningDataDir) {
+      lines.push(`conditioning_data_dir = ${tomlValue({ type: "string" }, entry.conditioningDataDir)}`);
+    }
     if (entry.isReg) lines.push("is_reg = true");
   }
   return lines.join("\n") + "\n";
@@ -812,10 +825,9 @@ async function handleTrain() {
     return;
   }
 
-  const maskedLoss = $("masked-loss").checked;
-  const conditioningData = $("conditioning-data").value.trim();
-  if (maskedLoss && !conditioningData) {
-    notifyError("Conditioning Data Path is required when Masked Loss is enabled");
+  const withConditioning = datasetEntries.filter((e) => e.conditioningDataDir).length;
+  if (withConditioning && withConditioning !== datasetEntries.length) {
+    notifyError("Conditioning data folder must be set for all or none of the dataset entries");
     return;
   }
 
@@ -824,7 +836,6 @@ async function handleTrain() {
       installPath,
       toml: buildToml(),
       datasetToml: buildDatasetToml(),
-      conditioningDataDir: maskedLoss ? conditioningData : null,
     });
   } catch (e) {
     notifyError(String(e));
@@ -881,9 +892,6 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   $("install-btn").addEventListener("click", handleInstall);
   $("train-btn").addEventListener("click", handleTrain);
-  $("masked-loss").addEventListener("change", () => {
-    $("conditioning-field").hidden = !$("masked-loss").checked;
-  });
   $("open-config").addEventListener("click", () => {
     invoke("open_config_folder").catch((e) => notifyError(String(e)));
   });

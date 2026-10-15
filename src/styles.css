@@ -29,6 +29,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   height: 100%;
@@ -206,7 +210,7 @@ select:focus {
 
 .dataset-entry {
   display: grid;
-  grid-template-columns: auto minmax(0, 2fr) minmax(0, 1.5fr) 110px 110px auto;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1.5fr) minmax(0, 1.5fr) auto;
   gap: 12px;
   align-items: end;
   padding: 12px;
@@ -216,8 +220,8 @@ select:focus {
   background: var(--panel);
 }
 
-.dataset-entry .toggle {
-  align-self: end;
+.entry-reg {
+  grid-column: 4;
 }
 
 .entry-field label {
@@ -388,9 +392,21 @@ select:focus {
 }
 
 .param-radio {
+  grid-column: span 2;
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.param-radio .toggle {
+  flex: 1;
+  padding: 0;
+  border: none;
+  background: transparent;
 }
 
 label.toggle {
@@ -462,7 +478,7 @@ label.toggle {
   }
 
   .dataset-entry {
-    grid-template-columns: auto repeat(2, minmax(0, 1fr)) auto;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) auto;
   }
 }
 
@@ -473,6 +489,10 @@ label.toggle {
 
   .dataset-entry {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .entry-reg {
+    grid-column: auto;
   }
 }
 
@@ -492,5 +512,9 @@ label.toggle {
 
   .dataset-entry {
     grid-template-columns: 1fr;
+  }
+
+  .param-radio {
+    grid-column: auto;
   }
 }

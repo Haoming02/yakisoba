@@ -322,8 +322,16 @@ fn install(app: AppHandle, path: String) -> Result<(), String> {
     std::thread::spawn(move || {
         let result = (|| -> Result<PathBuf, String> {
             if !skip_clone {
-                let mut clone_args: Vec<&str> =
-                    vec!["clone", "https://github.com/kohya-ss/sd-scripts"];
+                let mut clone_args: Vec<&str> = vec![
+                    "clone",
+                    "--branch",
+                    "v0.12.0",
+                    "--depth",
+                    "1",
+                    "--filter",
+                    "blob:none",
+                    "https://github.com/kohya-ss/sd-scripts",
+                ];
                 if let Some(name) = &clone_name {
                     clone_args.push(name);
                 }
@@ -421,7 +429,6 @@ fn start_training(
     install_path: String,
     mut toml: String,
     dataset_toml: String,
-    conditioning_data_dir: Option<String>,
 ) -> Result<(), String> {
     if state.lock().map_err(|e| e.to_string())?.is_some() {
         return Err("Training is already running".into());
@@ -458,12 +465,6 @@ fn start_training(
         fs::create_dir_all(&output).map_err(|e| e.to_string())?;
     }
 
-    if let Some(dir) = &conditioning_data_dir {
-        if !Path::new(dir).is_dir() {
-            return Err(format!("Conditioning data directory not found: {dir}"));
-        }
-    }
-
     if let Some(vae) = toml_string_value(&toml, "vae") {
         if let Ok(meta) = fs::metadata(&vae) {
             if meta.len() < VAE_2D_MAX_SIZE {
@@ -486,9 +487,6 @@ fn start_training(
         .arg("--dataset_config")
         .arg(&dataset_file)
         .current_dir(&install);
-    if let Some(dir) = &conditioning_data_dir {
-        cmd.arg("--conditioning_data_dir").arg(dir);
-    }
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
