@@ -181,8 +181,9 @@ fn run_stream(app: &AppHandle, program: &str, args: &[&str], cwd: &Path) -> Resu
     }
 }
 
-fn toml_string_value(toml: &str, key: &str) -> Option<String> {
+fn toml_string_values(toml: &str, key: &str) -> Vec<String> {
     let prefix = format!("{key} = ");
+    let mut values = Vec::new();
     for line in toml.lines() {
         let line = line.trim();
         if !line.starts_with(&prefix) {
@@ -204,10 +205,14 @@ fn toml_string_value(toml: &str, key: &str) -> Option<String> {
                     out.push(c);
                 }
             }
-            return Some(out);
+            values.push(out);
         }
     }
-    None
+    values
+}
+
+fn toml_string_value(toml: &str, key: &str) -> Option<String> {
+    toml_string_values(toml, key).into_iter().next()
 }
 
 #[tauri::command]
@@ -256,6 +261,24 @@ fn open_url(url: String) -> Result<(), String> {
 fn dir_is_empty(path: &Path) -> Result<bool, String> {
     let mut entries = fs::read_dir(path).map_err(|e| e.to_string())?;
     Ok(entries.next().is_none())
+}
+
+#[tauri::command]
+fn is_directory(path: String) -> bool {
+    Path::new(&path).is_dir()
+}
+
+#[tauri::command]
+fn list_subdirectories(path: String) -> Result<Vec<String>, String> {
+    let mut dirs = Vec::new();
+    for entry in fs::read_dir(&path).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        if entry.path().is_dir() {
+            dirs.push(entry.file_name().to_string_lossy().to_string());
+        }
+    }
+    dirs.sort();
+    Ok(dirs)
 }
 
 #[tauri::command]
@@ -397,6 +420,7 @@ fn start_training(
     state: State<'_, TrainState>,
     install_path: String,
     mut toml: String,
+    dataset_toml: String,
     conditioning_data_dir: Option<String>,
 ) -> Result<(), String> {
     if state.lock().map_err(|e| e.to_string())?.is_some() {
@@ -421,9 +445,13 @@ fn start_training(
             return Err(format!("Checkpoint not found: {checkpoint}"));
         }
     }
-    if let Some(dataset) = toml_string_value(&toml, "train_data_dir") {
-        if !Path::new(&dataset).is_dir() {
-            return Err(format!("Dataset directory not found: {dataset}"));
+    let image_dirs = toml_string_values(&dataset_toml, "image_dir");
+    if image_dirs.is_empty() {
+        return Err("No dataset entries to train".into());
+    }
+    for image_dir in &image_dirs {
+        if !Path::new(image_dir).is_dir() {
+            return Err(format!("Dataset directory not found: {image_dir}"));
         }
     }
     if let Some(output) = toml_string_value(&toml, "output_dir") {
@@ -444,13 +472,19 @@ fn start_training(
         }
     }
 
-    let param_file = training_dir(&app)?.join(format!("{}.toml", timestamp()));
+    let stamp = timestamp();
+    let dir = training_dir(&app)?;
+    let param_file = dir.join(format!("{stamp}.toml"));
     fs::write(&param_file, &toml).map_err(|e| e.to_string())?;
+    let dataset_file = dir.join(format!("{stamp}-D.toml"));
+    fs::write(&dataset_file, &dataset_toml).map_err(|e| e.to_string())?;
 
     let mut cmd = Command::new(&python);
     cmd.arg(&script)
         .arg("--config_file")
         .arg(&param_file)
+        .arg("--dataset_config")
+        .arg(&dataset_file)
         .current_dir(&install);
     if let Some(dir) = &conditioning_data_dir {
         cmd.arg("--conditioning_data_dir").arg(dir);
@@ -515,6 +549,8 @@ pub fn run() {
             open_config_folder,
             open_training_folder,
             open_url,
+            is_directory,
+            list_subdirectories,
             install,
             start_training,
             terminate_training

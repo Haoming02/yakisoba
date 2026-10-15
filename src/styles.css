@@ -183,6 +183,64 @@ select:focus {
   margin-top: 24px;
 }
 
+/* Dataset */
+.drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: 10px;
+  padding: 28px;
+  margin-bottom: 18px;
+  text-align: center;
+  color: var(--muted);
+  font-weight: 600;
+  transition:
+    border-color 0.2s,
+    background 0.2s,
+    color 0.2s;
+}
+
+.drop-zone.dragging {
+  border-color: var(--accent);
+  background: rgba(59, 130, 246, 0.08);
+  color: var(--text);
+}
+
+.dataset-entry {
+  display: grid;
+  grid-template-columns: auto minmax(0, 2fr) minmax(0, 1.5fr) 110px 110px auto;
+  gap: 12px;
+  align-items: end;
+  padding: 12px;
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.dataset-entry .toggle {
+  align-self: end;
+}
+
+.entry-field label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.entry-remove {
+  align-self: end;
+}
+
+.entry-remove:hover {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+#add-entry {
+  margin-top: 4px;
+}
+
 /* Status indicators */
 .status-row {
   display: flex;
@@ -402,10 +460,18 @@ label.toggle {
   .grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+
+  .dataset-entry {
+    grid-template-columns: auto repeat(2, minmax(0, 1fr)) auto;
+  }
 }
 
 @media (max-width: 820px) {
   .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dataset-entry {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -421,6 +487,10 @@ label.toggle {
   }
 
   .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dataset-entry {
     grid-template-columns: 1fr;
   }
 }
