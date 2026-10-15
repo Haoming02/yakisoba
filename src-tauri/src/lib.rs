@@ -269,6 +269,11 @@ fn is_directory(path: String) -> bool {
 }
 
 #[tauri::command]
+fn read_file(path: String) -> Result<String, String> {
+    fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {e}"))
+}
+
+#[tauri::command]
 fn list_subdirectories(path: String) -> Result<Vec<String>, String> {
     let mut dirs = Vec::new();
     for entry in fs::read_dir(&path).map_err(|e| e.to_string())? {
@@ -475,7 +480,7 @@ fn start_training(
 
     let stamp = timestamp();
     let dir = training_dir(&app)?;
-    let param_file = dir.join(format!("{stamp}.toml"));
+    let param_file = dir.join(format!("{stamp}-P.toml"));
     fs::write(&param_file, &toml).map_err(|e| e.to_string())?;
     let dataset_file = dir.join(format!("{stamp}-D.toml"));
     fs::write(&dataset_file, &dataset_toml).map_err(|e| e.to_string())?;
@@ -548,6 +553,7 @@ pub fn run() {
             open_training_folder,
             open_url,
             is_directory,
+            read_file,
             list_subdirectories,
             install,
             start_training,

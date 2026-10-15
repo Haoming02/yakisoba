@@ -224,6 +224,10 @@ select:focus {
   grid-column: 4;
 }
 
+.entry-span-2 {
+  grid-column: span 2;
+}
+
 .entry-field label {
   display: block;
   margin-bottom: 6px;
@@ -515,6 +519,10 @@ label.toggle {
   }
 
   .param-radio {
+    grid-column: auto;
+  }
+
+  .entry-span-2 {
     grid-column: auto;
   }
 }

@@ -2,38 +2,25 @@ This is a **Tauri** (`src`: `pnpm` + `Javascript` / `src-tauri`: `cargo` + `Rust
 
 ---
 
-## Installation
+## Training
 
-- Update the `git clone` command to clone the `v0.12.0` tag specifically, with `--filter blob:none` and `--depth 1` flags added
-
-## Paths
-
-- Remove "Masked Loss" and "Conditioning Data Path" fields (and the related visibility logics)
+- Error if "Output Filename" is empty
+- Serialize the parameter `.toml` with a suffix `-P`
+    - as opposed to `-D` for the dataset `.toml`
 
 ## Dataset
 
-- Change the text of the drag&drop field to "Drag & Drop Dataset Folder(s) Here"
-- Change the text of the button to "Add Empty Entry"
-- Within each Entry, change the layout to two rows
-    - Change "Image Dir" to "Image Folder"; Keep "Class Tokens" ; Move "Reg" checkbox to the end, and rename to "Is Reg"
-    - Add a `conditioning_data_dir` (also use "folder" in label) field with browse button ; move the "Keep Tokens" and "Num Repeats" here (equal width as "Class Tokens") ; Keep "Remove" button
-- Error if not **all** or **none** of entries contain `conditioning_data_dir`
-    - i.e. cannot mix
-- When serializing, omit `conditioning_data_dir` if empty (same behavior as `is_reg`)
-- If all subsets contain `conditioning_data_dir`, then add `masked_loss = true` to the parameter `.toml` again
+- Replace "Class Tokens" with "Overrides", add the same "comma separated" placeholder, and make the field span across 2 "columns"
+    - i.e. align with the 2 fields below
+    - When serializing, split the string by comma (and trim), then add the lines to the subset
+    - (remove `class_tokens` key)
+- Error if both `conditioning_data_dir` and `is_reg` are enabled at the same time
 
-> These have been verified to work ; no need to validate
+## Preset
 
-## Parameters
-
-- Reorder **Data & Buckets**:
-
-```
-Resolution ; Caption Extension ; Shuffle Caption, Cache Text Encoder Outputs
-Caption Dropout Rate ; Caption Tag Dropout Rate ; Cache Latents ; Skip Cache Check
-Enable Bucket ; Bucket No Upscale ; Bucket Reso Steps
-```
-
-- Make disabling "Enable Bucket" also hide "Bucket No Upscale"
-- Flatten "Shuffle Caption" & "Cache Text Encoder Outputs" horizontally (instead of stacking vertically)
-- Join their background together, so the radio appears as the same group, span across 2 "columns"
+- Add a new tab "Preset" after "Parameters"
+- The tab contains two drag & drop fields, one for dataset config, one for parameter config
+- They only accept `.toml` files ; do nothing otherwise
+- On drop, deserialize the values to the respective tabs
+    - For Dataset, dynamically rebuild the entires
+- Then, switch to the tab afterwards

@@ -253,7 +253,7 @@ function addDatasetEntry(fields = {}) {
   datasetEntries.push({
     isReg: false,
     imageDir: "",
-    classTokens: "",
+    overrides: "",
     conditioningDataDir: "",
     keepTokens: 0,
     numRepeats: 1,
@@ -264,6 +264,7 @@ function addDatasetEntry(fields = {}) {
 function entryField(labelText, value, onChange, options = {}) {
   const wrap = document.createElement("div");
   wrap.className = "entry-field";
+  if (options.span) wrap.classList.add("entry-span-2");
 
   const label = document.createElement("label");
   label.textContent = labelText;
@@ -278,6 +279,7 @@ function entryField(labelText, value, onChange, options = {}) {
   input.spellcheck = false;
   input.autocomplete = "off";
   if (options.id) input.id = options.id;
+  if (options.placeholder) input.placeholder = options.placeholder;
   input.value = String(value);
   input.addEventListener("input", () => onChange(input.value));
   control.appendChild(input);
@@ -312,9 +314,14 @@ function renderDatasetEntries() {
       ),
     );
     row.appendChild(
-      entryField("Class Tokens", entry.classTokens, (v) => {
-        entry.classTokens = v.trim();
-      }),
+      entryField(
+        "Overrides",
+        entry.overrides,
+        (v) => {
+          entry.overrides = v;
+        },
+        { placeholder: "comma separated", span: 2 },
+      ),
     );
 
     const reg = document.createElement("label");
@@ -379,20 +386,20 @@ async function processDroppedFolder(path) {
   const parsed = subdirs
     .map((name) => {
       const m = REPEAT_NAME_RE.exec(name);
-      return m ? { name, numRepeats: parseInt(m[1], 10), classTokens: m[2] } : null;
+      return m ? { name, numRepeats: parseInt(m[1], 10) } : null;
     })
     .filter(Boolean);
   if (parsed.length) {
     for (const sub of parsed) {
-      addDatasetEntry({ imageDir: joinPath(path, sub.name), classTokens: sub.classTokens, numRepeats: sub.numRepeats });
+      addDatasetEntry({ imageDir: joinPath(path, sub.name), numRepeats: sub.numRepeats });
     }
     return;
   }
   const m = REPEAT_NAME_RE.exec(folderName(path));
   if (m) {
-    addDatasetEntry({ imageDir: path, classTokens: m[2], numRepeats: parseInt(m[1], 10) });
+    addDatasetEntry({ imageDir: path, numRepeats: parseInt(m[1], 10) });
   } else {
-    addDatasetEntry({ imageDir: path, classTokens: folderName(path), numRepeats: 1 });
+    addDatasetEntry({ imageDir: path, numRepeats: 1 });
   }
 }
 
@@ -677,15 +684,171 @@ function buildDatasetToml() {
   for (const entry of datasetEntries) {
     lines.push("", "[[datasets.subsets]]");
     lines.push(`image_dir = ${tomlValue({ type: "string" }, entry.imageDir)}`);
-    lines.push(`class_tokens = ${tomlValue({ type: "string" }, entry.classTokens)}`);
     lines.push(`num_repeats = ${tomlValue({ type: "int" }, entry.numRepeats)}`);
     lines.push(`keep_tokens = ${tomlValue({ type: "int" }, entry.keepTokens)}`);
     if (entry.conditioningDataDir) {
       lines.push(`conditioning_data_dir = ${tomlValue({ type: "string" }, entry.conditioningDataDir)}`);
     }
     if (entry.isReg) lines.push("is_reg = true");
+    for (const item of String(entry.overrides)
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)) {
+      lines.push(item);
+    }
   }
   return lines.join("\n") + "\n";
+}
+
+const TOML_KEY_RE = /^([A-Za-z0-9_.-]+)\s*=\s*(.*)$/;
+const TOML_SECTION_RE = /^\[\[([^\]]+)\]\]$/;
+
+function parseTomlValue(raw) {
+  raw = raw.trim();
+  if (raw.startsWith('"')) {
+    let out = "";
+    let i = 1;
+    while (i < raw.length && raw[i] !== '"') {
+      if (raw[i] === "\\") i += 1;
+      out += raw[i] ?? "";
+      i += 1;
+    }
+    return out;
+  }
+  if (raw.startsWith("[")) {
+    const inner = raw.slice(1, raw.lastIndexOf("]"));
+    const items = [];
+    let depth = 0;
+    let inStr = false;
+    let escaped = false;
+    let current = "";
+    for (const c of inner) {
+      if (inStr) {
+        current += c;
+        if (escaped) escaped = false;
+        else if (c === "\\") escaped = true;
+        else if (c === '"') inStr = false;
+        continue;
+      }
+      if (c === '"') {
+        inStr = true;
+        current += c;
+      } else if (c === "[") {
+        depth += 1;
+        current += c;
+      } else if (c === "]") {
+        depth -= 1;
+        current += c;
+      } else if (c === "," && depth === 0) {
+        items.push(current);
+        current = "";
+      } else {
+        current += c;
+      }
+    }
+    if (current.trim()) items.push(current);
+    return items.map(parseTomlValue);
+  }
+  if (raw === "true") return true;
+  if (raw === "false") return false;
+  const n = Number(raw);
+  if (raw !== "" && Number.isFinite(n)) return n;
+  return raw;
+}
+
+function parseParamToml(text) {
+  const parsed = {};
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("[")) continue;
+    const m = TOML_KEY_RE.exec(trimmed);
+    if (m) parsed[m[1]] = parseTomlValue(m[2]);
+  }
+  return parsed;
+}
+
+function parseDatasetToml(text) {
+  const subsets = [];
+  let current = null;
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const section = TOML_SECTION_RE.exec(trimmed);
+    if (section) {
+      current = section[1] === "datasets.subsets" ? {} : null;
+      if (current) subsets.push(current);
+      continue;
+    }
+    if (!current) continue;
+    const m = TOML_KEY_RE.exec(trimmed);
+    if (m) current[m[1]] = m[2].trim();
+  }
+  return subsets;
+}
+
+const DATASET_ENTRY_KEYS = new Set(["image_dir", "num_repeats", "keep_tokens", "conditioning_data_dir", "is_reg"]);
+
+function applyDatasetPreset(subsets) {
+  datasetEntries.length = 0;
+  for (const subset of subsets) {
+    const overrides = [];
+    for (const [key, raw] of Object.entries(subset)) {
+      if (!DATASET_ENTRY_KEYS.has(key)) overrides.push(`${key} = ${raw}`);
+    }
+    addDatasetEntry({
+      imageDir: subset.image_dir !== undefined ? String(parseTomlValue(subset.image_dir)) : "",
+      overrides: overrides.join(", "),
+      conditioningDataDir:
+        subset.conditioning_data_dir !== undefined ? String(parseTomlValue(subset.conditioning_data_dir)) : "",
+      keepTokens: subset.keep_tokens !== undefined ? toInt(subset.keep_tokens, 0) : 0,
+      numRepeats: subset.num_repeats !== undefined ? toInt(subset.num_repeats, 1) : 1,
+      isReg: subset.is_reg === "true",
+    });
+  }
+  renderDatasetEntries();
+}
+
+function applyParamPreset(parsed) {
+  for (const group of PARAM_GROUPS) {
+    for (const field of group.fields) {
+      if (field.type === "radio") {
+        const selected = field.options.find((o) => parsed[o.key] === true);
+        if (selected) $(`param-${selected.key}`).checked = true;
+        continue;
+      }
+      const value = parsed[field.key];
+      if (value === undefined) continue;
+      const el = $(`param-${field.key}`);
+      if (!el) continue;
+      if (field.type === "bool") {
+        el.checked = Boolean(value);
+      } else if (field.type === "list") {
+        el.value = Array.isArray(value) ? value.join(", ") : String(value);
+      } else if (field.type === "enum") {
+        let option = String(value);
+        if (option.includes(",")) option = option.split(",")[0].trim();
+        if ([...el.options].some((o) => o.value === option)) el.value = option;
+      } else {
+        el.value = String(value);
+      }
+    }
+  }
+
+  for (const { key, id } of PATH_FIELDS) {
+    const value = parsed[key];
+    if (value !== undefined) $(id).value = String(value);
+  }
+
+  if (parsed.learning_rate !== undefined && parsed.unet_lr === undefined) {
+    $("param-unet_lr").value = $("param-learning_rate").value;
+  }
+
+  const presetSteps = Number(parsed.max_train_steps);
+  lastEditedEpochSteps = Number.isFinite(presetSteps) && presetSteps !== 0 ? "max_train_steps" : "max_train_epochs";
+
+  updateConditionalFields();
+  updateEpochStepsUI();
+  if (PATH_FIELDS.some(({ key }) => parsed[key] !== undefined)) scheduleSaveConfig();
 }
 
 function collectConfig() {
@@ -819,8 +982,17 @@ async function handleTrain() {
     return;
   }
 
+  if (datasetEntries.some((e) => e.conditioningDataDir && e.isReg)) {
+    notifyError("Conditioning data folder and is reg cannot both be set for the same dataset entry");
+    return;
+  }
+
   const outputName = $("output-name").value.trim();
-  if (outputName && /[<>:"/\\|?*]/.test(outputName)) {
+  if (!outputName) {
+    notifyError("Output filename is required");
+    return;
+  }
+  if (/[<>:"/\\|?*]/.test(outputName)) {
     notifyError(`Invalid characters in output filename: <>:"/\\|?*`);
     return;
   }
@@ -842,6 +1014,29 @@ async function handleTrain() {
   }
 }
 
+function activateTab(name) {
+  document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === name));
+  document.querySelectorAll(".page").forEach((p) => p.classList.remove("active"));
+  $(`page-${name}`).classList.add("active");
+}
+
+function dropZoneUnder(event) {
+  const position = event.payload?.position;
+  if (!position) return null;
+  const dpr = window.devicePixelRatio || 1;
+  const el = document.elementFromPoint(position.x / dpr, position.y / dpr);
+  return el?.closest(".drop-zone") || null;
+}
+
+function setDragHighlight(event) {
+  const zone = dropZoneUnder(event);
+  document.querySelectorAll(".drop-zone").forEach((el) => el.classList.toggle("dragging", el === zone));
+}
+
+function clearDragHighlight() {
+  document.querySelectorAll(".drop-zone").forEach((el) => el.classList.remove("dragging"));
+}
+
 window.addEventListener("DOMContentLoaded", async () => {
   renderParameters();
 
@@ -851,12 +1046,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   }
 
   document.querySelectorAll(".tab").forEach((tab) => {
-    tab.addEventListener("click", () => {
-      document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
-      document.querySelectorAll(".page").forEach((p) => p.classList.remove("active"));
-      tab.classList.add("active");
-      $(`page-${tab.dataset.tab}`).classList.add("active");
-    });
+    tab.addEventListener("click", () => activateTab(tab.dataset.tab));
   });
 
   document.addEventListener("click", (event) => {
@@ -905,26 +1095,58 @@ window.addEventListener("DOMContentLoaded", async () => {
     renderDatasetEntries();
   });
 
-  await listen("tauri://drag-enter", () => {
-    if ($("page-dataset").classList.contains("active")) $("drop-zone").classList.add("dragging");
-  });
-  await listen("tauri://drag-leave", () => {
-    $("drop-zone").classList.remove("dragging");
-  });
+  await listen("tauri://drag-enter", setDragHighlight);
+  await listen("tauri://drag-over", setDragHighlight);
+  await listen("tauri://drag-leave", clearDragHighlight);
   await listen("tauri://drag-drop", async (event) => {
-    $("drop-zone").classList.remove("dragging");
-    if (!$("page-dataset").classList.contains("active")) return;
-    let added = false;
-    for (const path of event.payload?.paths || []) {
-      try {
-        if (!(await invoke("is_directory", { path }))) continue;
-        await processDroppedFolder(path);
-        added = true;
-      } catch (e) {
-        notifyError(String(e));
+    clearDragHighlight();
+    const zone = dropZoneUnder(event);
+    if (!zone) return;
+    const paths = event.payload?.paths || [];
+
+    if (zone.id === "drop-zone") {
+      let added = false;
+      for (const path of paths) {
+        try {
+          if (!(await invoke("is_directory", { path }))) continue;
+          await processDroppedFolder(path);
+          added = true;
+        } catch (e) {
+          notifyError(String(e));
+        }
       }
+      if (added) renderDatasetEntries();
+      return;
     }
-    if (added) renderDatasetEntries();
+
+    const tomlPaths = paths.filter((p) => /\.toml$/i.test(p));
+    if (!tomlPaths.length) return;
+
+    if (zone.id === "preset-dataset") {
+      const subsets = [];
+      for (const path of tomlPaths) {
+        try {
+          subsets.push(...parseDatasetToml(await invoke("read_file", { path })));
+        } catch (e) {
+          notifyError(String(e));
+        }
+      }
+      if (subsets.length) {
+        applyDatasetPreset(subsets);
+        activateTab("dataset");
+      }
+    } else if (zone.id === "preset-parameters") {
+      let applied = false;
+      for (const path of tomlPaths) {
+        try {
+          applyParamPreset(parseParamToml(await invoke("read_file", { path })));
+          applied = true;
+        } catch (e) {
+          notifyError(String(e));
+        }
+      }
+      if (applied) activateTab("parameters");
+    }
   });
 
   await listen("install-log", (event) => {
