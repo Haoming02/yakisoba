@@ -2,15 +2,19 @@ This is a **Tauri** (`src`: `pnpm` + `Javascript` / `src-tauri`: `cargo` + `Rust
 
 ---
 
-### Rust
+### Frontend
 
-- Use the `rust-skills` skill to review and optimize the Rust implementation (`src-tauri/lib.rs`)
+- Use the `frontend-design` skill to redesign the UI implementation (`src/index.html` / `src/style.css`)
     - **Key Features**
-        - `git clone` the specified repository
-        - `uv pip install` the dependencies
-        - serialze and deserialize `.toml` files
-        - call the `.py` script to start training
-
-- Ensure that the `.exit` file is deleted afterwards
-- Make comments concise and remove redundent ones
-- Use the `toml` crate to handle `.toml` files
+        - Modern / "Inky" Theme / "Azure" Accent
+        - Navbar
+            - Logo on the Left ; 5 Tabs on the right
+        - Content Container
+            - Indicators
+            - Fields
+                - Text / Number / Radio / Dropdown / Checkbox
+            - Folder Entries
+        - Footer
+            - Train button
+    - Keep the changes purely stylistic ; Do not add extra labels or remove elements
+    - Do not add new font assets

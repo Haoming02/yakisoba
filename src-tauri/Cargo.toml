@@ -1,6 +1,6 @@
 [package]
 name = "yakisoba"
-version = "0.2.13"
+version = "0.2.14"
 description = "A simple GUI to train Anima LoRA"
 authors = ["Haoming"]
 edition = "2021"
