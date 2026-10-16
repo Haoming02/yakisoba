@@ -673,6 +673,13 @@ function buildToml() {
       if (field.key === "timestep_sampling" && raw === "shift") {
         lines.push(`discrete_flow_shift = 3.0`);
       }
+      if (field.key === "resolution") {
+        const reso = parseInt(raw, 10);
+        if (Number.isFinite(reso)) {
+          lines.push(`min_bucket_reso = ${Math.round(reso / 2)}`);
+          lines.push(`max_bucket_reso = ${Math.round(reso * 1.5)}`);
+        }
+      }
     }
   }
 

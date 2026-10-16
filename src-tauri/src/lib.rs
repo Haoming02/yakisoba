@@ -4,7 +4,7 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::path::BaseDirectory;
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -427,6 +427,50 @@ fn timestamp() -> String {
     )
 }
 
+fn kill_pid(pid: u32) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let _ = Command::new("taskkill")
+            .args(["/F", "/T", "/PID", &pid.to_string()])
+            .creation_flags(0x0800_0000)
+            .status();
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = Command::new("kill").args(["-9", &pid.to_string()]).status();
+    }
+}
+
+// Stops the training (the python child) without closing the console window,
+// so the window falls through to its `pause` and the logs stay readable.
+fn kill_training_children(pid: u32) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let query = format!(
+            "Get-CimInstance Win32_Process -Filter \"ParentProcessId={pid}\" | Where-Object {{ $_.Name -like 'python*' }} | ForEach-Object {{ $_.ProcessId }}"
+        );
+        let output = Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", &query])
+            .creation_flags(0x0800_0000)
+            .output();
+        if let Ok(output) = output {
+            for line in String::from_utf8_lossy(&output.stdout).lines() {
+                if let Ok(child) = line.trim().parse::<u32>() {
+                    kill_pid(child);
+                }
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = Command::new("pkill")
+            .args(["-TERM", "-P", &pid.to_string()])
+            .status();
+    }
+}
+
 #[tauri::command]
 fn start_training(
     app: AppHandle,
@@ -435,10 +479,6 @@ fn start_training(
     mut toml: String,
     dataset_toml: String,
 ) -> Result<(), String> {
-    if state.lock().map_err(|e| e.to_string())?.is_some() {
-        return Err("Training is already running".into());
-    }
-
     let install = PathBuf::from(&install_path);
     if !install.is_dir() {
         return Err("Installation path is not set or does not exist".into());
@@ -485,35 +525,118 @@ fn start_training(
     let dataset_file = dir.join(format!("{stamp}-D.toml"));
     fs::write(&dataset_file, &dataset_toml).map_err(|e| e.to_string())?;
 
-    let mut cmd = Command::new(&python);
-    cmd.arg(&script)
-        .arg("--config_file")
-        .arg(&param_file)
-        .arg("--dataset_config")
-        .arg(&dataset_file)
-        .current_dir(&install);
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x0000_0010); // CREATE_NEW_CONSOLE so the training logs are visible
+    // A previous run may have finished but left its console open (paused).
+    // Kill that console before starting a fresh process.
+    let lingering = {
+        let mut guard = state.lock().map_err(|e| e.to_string())?;
+        guard.take()
+    };
+    if let Some(pid) = lingering {
+        kill_pid(pid);
     }
 
-    let child = cmd
-        .spawn()
-        .map_err(|e| format!("Failed to start training: {e}"))?;
-    let pid = child.id();
-    *state.lock().map_err(|e| e.to_string())? = Some(pid);
-    let _ = app.emit("train-status", true);
+    #[cfg(windows)]
+    {
+        let marker = dir.join(format!("{stamp}.exit"));
+        let _ = fs::remove_file(&marker);
+        let bat = app
+            .path()
+            .resolve(format!("yakisoba-{stamp}.bat"), BaseDirectory::Temp)
+            .map_err(|e| e.to_string())?;
+        let script_content = format!(
+            "@echo off\r\n\"{}\" \"{}\" --config_file \"{}\" --dataset_config \"{}\"\r\ntype nul > \"{}\"\r\npause\r\n",
+            python.to_string_lossy(),
+            script.to_string_lossy(),
+            param_file.to_string_lossy(),
+            dataset_file.to_string_lossy(),
+            marker.to_string_lossy(),
+        );
+        fs::write(&bat, script_content).map_err(|e| e.to_string())?;
 
-    let monitor = state.inner().clone();
-    std::thread::spawn(move || {
-        let mut child = child;
-        let _ = child.wait();
-        if let Ok(mut guard) = monitor.lock() {
-            *guard = None;
-        }
-        let _ = app.emit("train-status", false);
-    });
+        use std::os::windows::process::CommandExt;
+        let mut cmd = Command::new("cmd");
+        cmd.args(["/C", &bat.to_string_lossy()]);
+        cmd.creation_flags(0x0000_0010); // CREATE_NEW_CONSOLE so the training logs are visible
+
+        let child = cmd
+            .spawn()
+            .map_err(|e| format!("Failed to start training: {e}"))?;
+        let pid = child.id();
+        *state.lock().map_err(|e| e.to_string())? = Some(pid);
+        let _ = app.emit("train-status", true);
+
+        let monitor = state.inner().clone();
+        std::thread::spawn(move || {
+            let mut child = child;
+            let mut script_finished = false;
+            loop {
+                if marker.exists() {
+                    script_finished = true;
+                    break;
+                }
+                match child.try_wait() {
+                    Ok(Some(_)) => break,
+                    Ok(None) => std::thread::sleep(Duration::from_millis(250)),
+                    Err(_) => break,
+                }
+            }
+
+            if script_finished {
+                if let Ok(guard) = monitor.lock() {
+                    if *guard == Some(pid) {
+                        drop(guard);
+                        let _ = app.emit("train-status", false);
+                    }
+                }
+                let _ = child.wait();
+            }
+
+            let mut cleared = false;
+            if let Ok(mut guard) = monitor.lock() {
+                if *guard == Some(pid) {
+                    *guard = None;
+                    cleared = true;
+                }
+            }
+            if !script_finished && cleared {
+                let _ = app.emit("train-status", false);
+            }
+        });
+    }
+
+    #[cfg(not(windows))]
+    {
+        let mut cmd = Command::new(&python);
+        cmd.arg(&script)
+            .arg("--config_file")
+            .arg(&param_file)
+            .arg("--dataset_config")
+            .arg(&dataset_file)
+            .current_dir(&install);
+
+        let child = cmd
+            .spawn()
+            .map_err(|e| format!("Failed to start training: {e}"))?;
+        let pid = child.id();
+        *state.lock().map_err(|e| e.to_string())? = Some(pid);
+        let _ = app.emit("train-status", true);
+
+        let monitor = state.inner().clone();
+        std::thread::spawn(move || {
+            let mut child = child;
+            let _ = child.wait();
+            let mut cleared = false;
+            if let Ok(mut guard) = monitor.lock() {
+                if *guard == Some(pid) {
+                    *guard = None;
+                    cleared = true;
+                }
+            }
+            if cleared {
+                let _ = app.emit("train-status", false);
+            }
+        });
+    }
 
     Ok(())
 }
@@ -523,17 +646,9 @@ fn terminate_training(state: State<'_, TrainState>) -> Result<(), String> {
     let pid = *state.lock().map_err(|e| e.to_string())?;
     if let Some(pid) = pid {
         #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            let _ = Command::new("taskkill")
-                .args(["/F", "/T", "/PID", &pid.to_string()])
-                .creation_flags(0x0800_0000)
-                .status();
-        }
+        kill_training_children(pid);
         #[cfg(not(windows))]
-        {
-            let _ = Command::new("kill").args(["-9", &pid.to_string()]).status();
-        }
+        kill_pid(pid);
     }
     Ok(())
 }
