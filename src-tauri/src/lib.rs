@@ -93,20 +93,20 @@ fn venv_python(base: &Path) -> PathBuf {
 }
 
 struct ScriptsState {
-    cloned: bool,
+    scripts: bool,
     venv: bool,
     library: bool,
 }
 
 impl ScriptsState {
     fn installed(&self) -> bool {
-        self.cloned && self.venv && self.library
+        self.scripts && self.venv && self.library
     }
 }
 
 fn scripts_state(path: &str) -> ScriptsState {
     let mut state = ScriptsState {
-        cloned: false,
+        scripts: false,
         venv: false,
         library: false,
     };
@@ -117,12 +117,8 @@ fn scripts_state(path: &str) -> ScriptsState {
     if !dir.is_dir() || dir_is_empty(dir).unwrap_or(true) {
         return state;
     }
-    if let Ok(file) = fs::File::open(dir.join("README.md")) {
-        if let Some(Ok(line)) = BufReader::new(file).lines().next() {
-            state.cloned = line.contains("sd-scripts");
-        }
-    }
-    if !state.cloned {
+    state.scripts = dir.join("anima_train_network.py").is_file();
+    if !state.scripts {
         return state;
     }
     state.venv = dir.join("venv").is_dir();
@@ -278,7 +274,7 @@ fn install(app: AppHandle, path: String) -> Result<(), String> {
     }
 
     let scripts = scripts_state(&path);
-    let (clone_cwd, clone_name, final_dir) = if scripts.cloned {
+    let (clone_cwd, clone_name, final_dir) = if scripts.scripts {
         (target.clone(), None, target.clone())
     } else if target.exists() && !dir_is_empty(&target)? {
         let clone_dest = target.join("sd-scripts");
@@ -302,7 +298,7 @@ fn install(app: AppHandle, path: String) -> Result<(), String> {
         (parent.to_path_buf(), Some(name), target.clone())
     };
 
-    let skip_clone = scripts.cloned;
+    let skip_clone = scripts.scripts;
     let has_venv = scripts.venv;
     let worker = app.clone();
     std::thread::spawn(move || {
@@ -468,9 +464,6 @@ fn start_training(
         return Err("virtual environment not found in the installation path".into());
     }
     let script = install.join("anima_train_network.py");
-    if !script.is_file() {
-        return Err("anima_train_network.py not found in the installation path".into());
-    }
 
     let mut params: toml::Table =
         toml::from_str(&toml).map_err(|e| format!("invalid parameters: {e}"))?;
@@ -495,7 +488,15 @@ fn start_training(
         fs::create_dir_all(&output).map_err(|e| e.to_string())?;
     }
 
+    if let Some(qwen3) = toml_str(&params, "qwen3") {
+        if !Path::new(&qwen3).is_file() {
+            return Err(format!("text encoder not found: {qwen3}"));
+        }
+    }
     if let Some(vae) = toml_str(&params, "vae") {
+        if !Path::new(&vae).is_file() {
+            return Err(format!("vae not found: {vae}"));
+        }
         if matches!(fs::metadata(&vae), Ok(meta) if meta.len() < VAE_2D_MAX_SIZE) {
             params.insert("qwen_image_vae_2d".to_string(), toml::Value::Boolean(true));
         }

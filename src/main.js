@@ -602,6 +602,42 @@ function tomlString(value) {
   return `"${escapeToml(String(value))}"`;
 }
 
+function splitCsv(raw) {
+  const items = [];
+  let current = "";
+  let quoted = false;
+  const text = String(raw);
+  for (let i = 0; i < text.length; i += 1) {
+    const c = text[i];
+    if (quoted) {
+      if (c === '"') {
+        if (text[i + 1] === '"') {
+          current += '"';
+          i += 1;
+        } else {
+          quoted = false;
+        }
+      } else {
+        current += c;
+      }
+    } else if (c === '"') {
+      quoted = true;
+    } else if (c === ",") {
+      items.push(current.trim());
+      current = "";
+    } else {
+      current += c;
+    }
+  }
+  items.push(current.trim());
+  return items.filter(Boolean);
+}
+
+function csvField(value) {
+  const s = String(value);
+  return /[,"]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
 function tomlValue(field, raw) {
   switch (field.type) {
     case "bool":
@@ -619,10 +655,7 @@ function tomlValue(field, raw) {
       if (field.key === "resolution") return `"${escapeToml(raw)},${escapeToml(raw)}"`;
       return tomlString(raw);
     case "list": {
-      const items = String(raw)
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
+      const items = splitCsv(raw);
       return `[${items.map(tomlString).join(", ")}]`;
     }
     default:
@@ -692,10 +725,7 @@ function buildDatasetToml() {
       lines.push(`conditioning_data_dir = ${tomlString(entry.conditioningDataDir)}`);
     }
     if (entry.isReg) lines.push("is_reg = true");
-    for (const item of String(entry.overrides)
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean)) {
+    for (const item of splitCsv(entry.overrides)) {
       lines.push(item);
     }
   }
@@ -707,6 +737,15 @@ const TOML_SECTION_RE = /^\[\[([^\]]+)\]\]$/;
 
 function parseTomlValue(raw) {
   raw = raw.trim();
+  if (raw.startsWith("'")) {
+    let out = "";
+    let i = 1;
+    while (i < raw.length && raw[i] !== "'") {
+      out += raw[i];
+      i += 1;
+    }
+    return out;
+  }
   if (raw.startsWith('"')) {
     let out = "";
     let i = 1;
@@ -721,19 +760,19 @@ function parseTomlValue(raw) {
     const inner = raw.slice(1, raw.lastIndexOf("]"));
     const items = [];
     let depth = 0;
-    let inStr = false;
+    let inStr = null;
     let escaped = false;
     let current = "";
     for (const c of inner) {
       if (inStr) {
         current += c;
-        if (escaped) escaped = false;
-        else if (c === "\\") escaped = true;
-        else if (c === '"') inStr = false;
+        if (inStr === '"' && escaped) escaped = false;
+        else if (inStr === '"' && c === "\\") escaped = true;
+        else if (c === inStr) inStr = null;
         continue;
       }
-      if (c === '"') {
-        inStr = true;
+      if (c === '"' || c === "'") {
+        inStr = c;
         current += c;
       } else if (c === "[") {
         depth += 1;
@@ -795,7 +834,7 @@ function applyDatasetPreset(subsets) {
   for (const subset of subsets) {
     const overrides = Object.entries(subset)
       .filter(([key]) => !DATASET_ENTRY_KEYS.has(key))
-      .map(([key, raw]) => `${key} = ${raw}`)
+      .map(([key, raw]) => csvField(`${key} = ${raw}`))
       .join(", ");
     const str = (key, fallback) => (subset[key] === undefined ? fallback : String(parseTomlValue(subset[key])));
     addDatasetEntry({
@@ -825,7 +864,7 @@ function applyParamPreset(parsed) {
       if (field.type === "bool") {
         el.checked = Boolean(value);
       } else if (field.type === "list") {
-        el.value = Array.isArray(value) ? value.join(", ") : String(value);
+        el.value = Array.isArray(value) ? value.map(csvField).join(", ") : String(value);
       } else if (field.type === "enum") {
         let option = String(value);
         if (option.includes(",")) option = option.split(",")[0].trim();
@@ -999,6 +1038,12 @@ async function handleTrain() {
     return;
   }
 
+  if (!activeEpochSteps()) {
+    notifyError("Max Train Epochs and Max Train Steps cannot both be 0");
+    return;
+  }
+
+  setTraining(true);
   try {
     await invoke("start_training", {
       installPath,
@@ -1006,6 +1051,7 @@ async function handleTrain() {
       datasetToml: buildDatasetToml(),
     });
   } catch (e) {
+    setTraining(false);
     notifyError(String(e));
   }
 }
