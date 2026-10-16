@@ -2,9 +2,9 @@
 <html lang="en">
 
 <head>
-  <meta charset="UTF-8" />
-  <link rel="stylesheet" href="styles.css" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="styles.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Yakisoba</title>
   <script type="module" src="/main.js" defer></script>
 </head>
@@ -12,15 +12,15 @@
 <body>
   <nav id="navbar">
     <div class="brand">
-      <img src="./icon.png" alt="logo" />
+      <img src="./icon.png" alt="logo">
       <span>Yakisoba</span>
     </div>
     <div class="tabs">
-      <button class="tab active" data-tab="installation">Installation</button>
-      <button class="tab" data-tab="paths">Paths</button>
-      <button class="tab" data-tab="dataset">Dataset</button>
-      <button class="tab" data-tab="parameters">Parameters</button>
-      <button class="tab" data-tab="preset">Preset</button>
+      <button type="button" class="tab active" data-tab="installation">Installation</button>
+      <button type="button" class="tab" data-tab="paths">Paths</button>
+      <button type="button" class="tab" data-tab="dataset">Dataset</button>
+      <button type="button" class="tab" data-tab="parameters">Parameters</button>
+      <button type="button" class="tab" data-tab="preset">Preset</button>
     </div>
   </nav>
 
@@ -29,8 +29,8 @@
       <div class="field">
         <label for="installation">Installation Path</label>
         <div class="control">
-          <input id="installation" type="text" placeholder="C:/project/train" spellcheck="false" autocomplete="off" />
-          <button class="browse" data-target="installation" data-kind="dir">Browse</button>
+          <input id="installation" type="text" placeholder="C:/project/train" spellcheck="false" autocomplete="off">
+          <button type="button" class="browse" data-target="installation" data-kind="dir">Browse</button>
         </div>
       </div>
 
@@ -40,7 +40,7 @@
         <span class="status" id="status-sd"><i></i>sd-scripts</span>
       </div>
 
-      <button id="install-btn" class="install" disabled>Install</button>
+      <button type="button" id="install-btn" class="install" disabled>Install</button>
       <pre id="install-log" class="log" hidden></pre>
     </section>
 
@@ -49,58 +49,61 @@
         <label for="checkpoint">Checkpoint Path</label>
         <div class="control">
           <input id="checkpoint" type="text" placeholder="anima-base-v1.0.safetensors" spellcheck="false"
-            autocomplete="off" />
-          <button class="browse" data-target="checkpoint" data-kind="file">Browse</button>
+            autocomplete="off">
+          <button type="button" class="browse" data-target="checkpoint" data-kind="file">Browse</button>
         </div>
       </div>
       <div class="field">
         <label for="text-encoder">Text Encoder Path</label>
         <div class="control">
           <input id="text-encoder" type="text" placeholder="qwen_3_06b_base.safetensors" spellcheck="false"
-            autocomplete="off" />
-          <button class="browse" data-target="text-encoder" data-kind="file">Browse</button>
+            autocomplete="off">
+          <button type="button" class="browse" data-target="text-encoder" data-kind="file">Browse</button>
         </div>
       </div>
       <div class="field">
         <label for="vae">VAE Path</label>
         <div class="control">
-          <input id="vae" type="text" placeholder="qwen_image_vae.safetensors" spellcheck="false" autocomplete="off" />
-          <button class="browse" data-target="vae" data-kind="file">Browse</button>
+          <input id="vae" type="text" placeholder="qwen_image_vae.safetensors" spellcheck="false" autocomplete="off">
+          <button type="button" class="browse" data-target="vae" data-kind="file">Browse</button>
         </div>
       </div>
       <div class="field">
         <label for="output">Output Path</label>
         <div class="control">
-          <input id="output" type="text" spellcheck="false" autocomplete="off" />
-          <button class="browse" data-target="output" data-kind="dir">Browse</button>
+          <input id="output" type="text" spellcheck="false" autocomplete="off">
+          <button type="button" class="browse" data-target="output" data-kind="dir">Browse</button>
         </div>
       </div>
       <div class="field">
         <label for="resume-weights">Resume From Weights</label>
         <div class="control">
-          <input id="resume-weights" type="text" spellcheck="false" autocomplete="off" />
-          <button class="browse" data-target="resume-weights" data-kind="file">Browse</button>
+          <input id="resume-weights" type="text" spellcheck="false" autocomplete="off">
+          <button type="button" class="browse" data-target="resume-weights" data-kind="file">Browse</button>
         </div>
       </div>
       <div class="field">
         <label for="output-name">Output Filename</label>
         <div class="control">
-          <input id="output-name" type="text" spellcheck="false" autocomplete="off" />
+          <input id="output-name" type="text" spellcheck="false" autocomplete="off">
         </div>
       </div>
       <div class="paths-actions">
-        <button id="open-config" class="browse" title="Open the folder containing the paths config (.json)">Open Config
-          Folder</button>
-        <button id="open-training" class="browse"
-          title="Open the folder containing the last training config (.toml)">Open
-          Training Folder</button>
+        <button type="button" id="open-config" class="browse"
+          title="Open the folder containing the paths config (.json)">
+          Open Config Folder
+        </button>
+        <button type="button" id="open-training" class="browse"
+          title="Open the folder containing the last training config (.toml)">
+          Open Training Folder
+        </button>
       </div>
     </section>
 
     <section class="page" id="page-dataset">
       <div class="drop-zone" id="drop-zone">Drag &amp; Drop Dataset Folder(s) Here</div>
       <div id="dataset-entries"></div>
-      <button id="add-entry" class="browse">Add Empty Entry</button>
+      <button type="button" id="add-entry" class="browse">Add Empty Entry</button>
     </section>
 
     <section class="page" id="page-parameters">
@@ -114,7 +117,7 @@
   </main>
 
   <footer id="footer">
-    <button id="train-btn" class="train">Train</button>
+    <button type="submit" id="train-btn" class="train">Train</button>
   </footer>
 </body>
 

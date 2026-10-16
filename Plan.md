@@ -4,17 +4,9 @@ This is a **Tauri** (`src`: `pnpm` + `Javascript` / `src-tauri`: `cargo` + `Rust
 
 ### Frontend
 
-- Use the `frontend-design` skill to redesign the UI implementation (`src/index.html` / `src/style.css`)
-    - **Key Features**
-        - Modern / "Inky" Theme / "Azure" Accent
-        - Navbar
-            - Logo on the Left ; 5 Tabs on the right
-        - Content Container
-            - Indicators
-            - Fields
-                - Text / Number / Radio / Dropdown / Checkbox
-            - Folder Entries
-        - Footer
-            - Train button
-    - Keep the changes purely stylistic ; Do not add extra labels or remove elements
-    - Do not add new font assets
+- Fix the following linter reports:
+    - `lint/style/useTemplate: Template literals are preferred over string concatenation.` x2
+    - `lint/suspicious/useIterableCallbackReturn: This callback passed to forEach() iterable method should not return a value.` x4
+    - `lint/correctness/noUnusedVariables: This variable e is unused.` x2
+
+- Go through the entire JavaScript (`src/main.js`), clean up / simplify / refactor / optimize the logics

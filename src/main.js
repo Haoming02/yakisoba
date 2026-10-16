@@ -3,6 +3,8 @@ const { open } = window.__TAURI__.dialog;
 const { listen } = window.__TAURI__.event;
 const notification = window.__TAURI__.notification;
 
+const $ = (id) => document.getElementById(id);
+
 const OPTIMIZERS = [
   "AdamW",
   "AdamWScheduleFree",
@@ -31,7 +33,7 @@ const DEFAULT_WORKERS = (() => {
   try {
     const n = Math.floor(window.navigator.hardwareConcurrency / 2);
     return Number.isFinite(n) ? n : 0;
-  } catch (e) {
+  } catch {
     return 0;
   }
 })();
@@ -299,7 +301,7 @@ function entryField(labelText, value, onChange, options = {}) {
 function renderDatasetEntries() {
   const root = $("dataset-entries");
   root.innerHTML = "";
-  datasetEntries.forEach((entry, index) => {
+  for (const [index, entry] of datasetEntries.entries()) {
     const row = document.createElement("div");
     row.className = "dataset-entry";
 
@@ -378,7 +380,7 @@ function renderDatasetEntries() {
     });
     row.appendChild(remove);
     root.appendChild(row);
-  });
+  }
 }
 
 async function processDroppedFolder(path) {
@@ -396,18 +398,12 @@ async function processDroppedFolder(path) {
     return;
   }
   const m = REPEAT_NAME_RE.exec(folderName(path));
-  if (m) {
-    addDatasetEntry({ imageDir: path, numRepeats: parseInt(m[1], 10) });
-  } else {
-    addDatasetEntry({ imageDir: path, numRepeats: 1 });
-  }
+  addDatasetEntry({ imageDir: path, numRepeats: m ? parseInt(m[1], 10) : 1 });
 }
 
 const status = { git: false, uv: false, sdScripts: false };
 let training = false;
 let installing = false;
-
-const $ = (id) => document.getElementById(id);
 
 const EPOCH_STEPS_KEYS = ["max_train_epochs", "max_train_steps"];
 let lastEditedEpochSteps = "max_train_epochs";
@@ -433,21 +429,19 @@ function updateEpochStepsUI() {
   }
 }
 
-function notifyError(message) {
+async function notifyError(message) {
   const body = String(message);
-  (async () => {
-    try {
-      let granted = await notification.isPermissionGranted();
-      if (!granted) {
-        granted = (await notification.requestPermission()) === "granted";
-      }
-      if (granted) {
-        notification.sendNotification({ title: "Yakisoba", body });
-      }
-    } catch (e) {
-      console.error("Failed to send notification", e);
+  try {
+    let granted = await notification.isPermissionGranted();
+    if (!granted) {
+      granted = (await notification.requestPermission()) === "granted";
     }
-  })();
+    if (granted) {
+      notification.sendNotification({ title: "Yakisoba", body });
+    }
+  } catch (e) {
+    console.error("Failed to send notification", e);
+  }
 }
 
 const STATUS_LABELS = { "status-git": "git", "status-uv": "uv", "status-sd": "sd-scripts" };
@@ -461,7 +455,7 @@ function setStatus(id, ok) {
   const el = $(id);
   el.classList.toggle("ok", ok);
   el.classList.toggle("clickable", !ok && id in INSTALL_LINKS);
-  el.title = ok ? `${STATUS_LABELS[id]} is installed` : `${STATUS_LABELS[id]} is not installed`;
+  el.title = `${STATUS_LABELS[id]} is ${ok ? "" : "not "}installed`;
 }
 
 function updateInstallButton() {
@@ -578,7 +572,6 @@ function renderField(field) {
     } else {
       input.type = "text";
     }
-    input.id = `param-${field.key}`;
     input.spellcheck = false;
     input.autocomplete = "off";
     if (field.type === "list") {
@@ -605,6 +598,10 @@ function escapeToml(value) {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
+function tomlString(value) {
+  return `"${escapeToml(String(value))}"`;
+}
+
 function tomlValue(field, raw) {
   switch (field.type) {
     case "bool":
@@ -620,18 +617,16 @@ function tomlValue(field, raw) {
     }
     case "enum":
       if (field.key === "resolution") return `"${escapeToml(raw)},${escapeToml(raw)}"`;
-      return `"${escapeToml(raw)}"`;
-    case "string":
-      return `"${escapeToml(raw)}"`;
+      return tomlString(raw);
     case "list": {
       const items = String(raw)
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
-      return `[${items.map((s) => `"${escapeToml(s)}"`).join(", ")}]`;
+      return `[${items.map(tomlString).join(", ")}]`;
     }
     default:
-      return `"${escapeToml(raw)}"`;
+      return tomlString(raw);
   }
 }
 
@@ -641,7 +636,7 @@ function buildToml() {
 
   for (const { key, id } of PATH_FIELDS) {
     const value = $(id).value.trim();
-    if (value) lines.push(`${key} = ${tomlValue({ type: "string" }, value)}`);
+    if (value) lines.push(`${key} = ${tomlString(value)}`);
   }
 
   if (datasetEntries.length && datasetEntries.every((e) => e.conditioningDataDir)) {
@@ -671,7 +666,7 @@ function buildToml() {
       if (field.optional && String(raw).trim() === "") continue;
       lines.push(`${field.key} = ${tomlValue(field, raw)}`);
       if (field.key === "timestep_sampling" && raw === "shift") {
-        lines.push(`discrete_flow_shift = 3.0`);
+        lines.push("discrete_flow_shift = 3.0");
       }
       if (field.key === "resolution") {
         const reso = parseInt(raw, 10);
@@ -683,18 +678,18 @@ function buildToml() {
     }
   }
 
-  return lines.join("\n") + "\n";
+  return `${lines.join("\n")}\n`;
 }
 
 function buildDatasetToml() {
   const lines = ["[[datasets]]"];
   for (const entry of datasetEntries) {
     lines.push("", "[[datasets.subsets]]");
-    lines.push(`image_dir = ${tomlValue({ type: "string" }, entry.imageDir)}`);
+    lines.push(`image_dir = ${tomlString(entry.imageDir)}`);
     lines.push(`num_repeats = ${tomlValue({ type: "int" }, entry.numRepeats)}`);
     lines.push(`keep_tokens = ${tomlValue({ type: "int" }, entry.keepTokens)}`);
     if (entry.conditioningDataDir) {
-      lines.push(`conditioning_data_dir = ${tomlValue({ type: "string" }, entry.conditioningDataDir)}`);
+      lines.push(`conditioning_data_dir = ${tomlString(entry.conditioningDataDir)}`);
     }
     if (entry.isReg) lines.push("is_reg = true");
     for (const item of String(entry.overrides)
@@ -704,7 +699,7 @@ function buildDatasetToml() {
       lines.push(item);
     }
   }
-  return lines.join("\n") + "\n";
+  return `${lines.join("\n")}\n`;
 }
 
 const TOML_KEY_RE = /^([A-Za-z0-9_.-]+)\s*=\s*(.*)$/;
@@ -798,17 +793,17 @@ const DATASET_ENTRY_KEYS = new Set(["image_dir", "num_repeats", "keep_tokens", "
 function applyDatasetPreset(subsets) {
   datasetEntries.length = 0;
   for (const subset of subsets) {
-    const overrides = [];
-    for (const [key, raw] of Object.entries(subset)) {
-      if (!DATASET_ENTRY_KEYS.has(key)) overrides.push(`${key} = ${raw}`);
-    }
+    const overrides = Object.entries(subset)
+      .filter(([key]) => !DATASET_ENTRY_KEYS.has(key))
+      .map(([key, raw]) => `${key} = ${raw}`)
+      .join(", ");
+    const str = (key, fallback) => (subset[key] === undefined ? fallback : String(parseTomlValue(subset[key])));
     addDatasetEntry({
-      imageDir: subset.image_dir !== undefined ? String(parseTomlValue(subset.image_dir)) : "",
-      overrides: overrides.join(", "),
-      conditioningDataDir:
-        subset.conditioning_data_dir !== undefined ? String(parseTomlValue(subset.conditioning_data_dir)) : "",
-      keepTokens: subset.keep_tokens !== undefined ? toInt(subset.keep_tokens, 0) : 0,
-      numRepeats: subset.num_repeats !== undefined ? toInt(subset.num_repeats, 1) : 1,
+      imageDir: str("image_dir", ""),
+      overrides,
+      conditioningDataDir: str("conditioning_data_dir", ""),
+      keepTokens: toInt(str("keep_tokens", 0), 0),
+      numRepeats: toInt(str("num_repeats", 1), 1),
       isReg: subset.is_reg === "true",
     });
   }
@@ -882,12 +877,7 @@ let checkTimer = null;
 function scheduleCheckInstallation() {
   clearTimeout(checkTimer);
   checkTimer = setTimeout(async () => {
-    let ok = false;
-    try {
-      ok = await invoke("check_installation", { path: $("installation").value.trim() });
-    } catch (e) {
-      ok = false;
-    }
+    const ok = await invoke("check_installation", { path: $("installation").value.trim() }).catch(() => false);
     status.sdScripts = ok;
     setStatus("status-sd", ok);
     updateInstallButton();
@@ -903,11 +893,10 @@ async function refresh() {
   setStatus("status-uv", status.uv);
   setStatus("status-sd", status.sdScripts);
 
-  $("installation").value = state.config.installation || state.defaultInstallation || "";
-  $("checkpoint").value = state.config.checkpoint || "";
-  $("text-encoder").value = state.config.textEncoder || "";
-  $("vae").value = state.config.vae || "";
-  $("output").value = state.config.output || "";
+  for (const { id, key } of CONFIG_FIELDS) {
+    const value = state.config[key] || "";
+    $(id).value = key === "installation" ? value || state.defaultInstallation || "" : value;
+  }
 
   updateInstallButton();
 }
@@ -1022,8 +1011,12 @@ async function handleTrain() {
 }
 
 function activateTab(name) {
-  document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === name));
-  document.querySelectorAll(".page").forEach((p) => p.classList.remove("active"));
+  for (const tab of document.querySelectorAll(".tab")) {
+    tab.classList.toggle("active", tab.dataset.tab === name);
+  }
+  for (const page of document.querySelectorAll(".page")) {
+    page.classList.remove("active");
+  }
   $(`page-${name}`).classList.add("active");
 }
 
@@ -1037,11 +1030,15 @@ function dropZoneUnder(event) {
 
 function setDragHighlight(event) {
   const zone = dropZoneUnder(event);
-  document.querySelectorAll(".drop-zone").forEach((el) => el.classList.toggle("dragging", el === zone));
+  for (const el of document.querySelectorAll(".drop-zone")) {
+    el.classList.toggle("dragging", el === zone);
+  }
 }
 
 function clearDragHighlight() {
-  document.querySelectorAll(".drop-zone").forEach((el) => el.classList.remove("dragging"));
+  for (const el of document.querySelectorAll(".drop-zone")) {
+    el.classList.remove("dragging");
+  }
 }
 
 window.addEventListener("DOMContentLoaded", async () => {
@@ -1052,28 +1049,28 @@ window.addEventListener("DOMContentLoaded", async () => {
     $(`param-${controller}`).addEventListener("change", updateConditionalFields);
   }
 
-  document.querySelectorAll(".tab").forEach((tab) => {
+  for (const tab of document.querySelectorAll(".tab")) {
     tab.addEventListener("click", () => activateTab(tab.dataset.tab));
-  });
+  }
 
   document.addEventListener("click", (event) => {
     const button = event.target.closest(".browse[data-target]");
     if (button) handleBrowse(button);
   });
 
-  CONFIG_FIELDS.forEach(({ id }) => {
+  for (const { id } of CONFIG_FIELDS) {
     $(id).addEventListener("change", scheduleSaveConfig);
-  });
+  }
 
   $("installation").addEventListener("input", scheduleCheckInstallation);
 
-  Object.entries(INSTALL_LINKS).forEach(([id, url]) => {
+  for (const [id, url] of Object.entries(INSTALL_LINKS)) {
     $(id).addEventListener("click", () => {
       if (!$(id).classList.contains("ok")) {
         invoke("open_url", { url }).catch((e) => notifyError(String(e)));
       }
     });
-  });
+  }
 
   $("param-learning_rate").addEventListener("input", () => {
     $("param-unet_lr").value = $("param-learning_rate").value;
