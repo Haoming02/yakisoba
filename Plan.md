@@ -2,15 +2,15 @@ This is a **Tauri** (`src`: `pnpm` + `Javascript` / `src-tauri`: `cargo` + `Rust
 
 ---
 
-## Parameters
+### Rust
 
-- When serializing, additionally save 2 keys, `min_bucket_reso` and `max_bucket_reso`, with values equal to half of and `1.5` times of `resolution` respectively
-    - e.g. if "Resolution" is `1024`, save `min` as `512` and `max` as `1536`
+- Use the `rust-skills` skill to review and optimize the Rust implementation (`src-tauri/lib.rs`)
+    - **Key Features**
+        - `git clone` the specified repository
+        - `uv pip install` the dependencies
+        - serialze and deserialize `.toml` files
+        - call the `.py` script to start training
 
-## Training
-
-- When launching the training process, force the console window to `PAUSE` after the original script finishes
-    - i.e. do not close the window automatically, so the user can review the logs / errors
-- The "Terminate" button should return to "Train" once the script itself finishes
-    - Do not kill the console on Terminate
-- If Train is clicked again when the console is still open, kill the console and start a new process as usual
+- Ensure that the `.exit` file is deleted afterwards
+- Make comments concise and remove redundent ones
+- Use the `toml` crate to handle `.toml` files

@@ -22,7 +22,7 @@ pub struct Config {
     pub output: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 struct InitState {
     config: Config,
@@ -56,14 +56,11 @@ fn training_dir(app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 fn read_config(app: &AppHandle) -> Config {
-    let path = match config_path(app) {
-        Ok(p) => p,
-        Err(_) => return Config::default(),
-    };
-    match fs::read_to_string(&path) {
-        Ok(s) => serde_json::from_str(&s).unwrap_or_default(),
-        Err(_) => Config::default(),
-    }
+    config_path(app)
+        .ok()
+        .and_then(|path| fs::read_to_string(path).ok())
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
 }
 
 fn write_config(app: &AppHandle, config: &Config) -> Result<(), String> {
@@ -152,24 +149,20 @@ fn run_stream(app: &AppHandle, program: &str, args: &[&str], cwd: &Path) -> Resu
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| format!("Failed to start `{program}`: {e}"))?;
+        .map_err(|e| format!("failed to start `{program}`: {e}"))?;
 
-    let stdout = child.stdout.take().unwrap();
-    let stderr = child.stderr.take().unwrap();
+    let stdout = child.stdout.take().expect("stdout piped");
+    let stderr = child.stderr.take().expect("stderr piped");
 
     let stderr_app = app.clone();
     let stderr_thread = std::thread::spawn(move || {
-        for line in BufReader::new(stderr).lines() {
-            if let Ok(line) = line {
-                let _ = stderr_app.emit("install-log", line);
-            }
+        for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+            let _ = stderr_app.emit("install-log", line);
         }
     });
 
-    for line in BufReader::new(stdout).lines() {
-        if let Ok(line) = line {
-            let _ = app.emit("install-log", line);
-        }
+    for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+        let _ = app.emit("install-log", line);
     }
     let _ = stderr_thread.join();
 
@@ -181,58 +174,46 @@ fn run_stream(app: &AppHandle, program: &str, args: &[&str], cwd: &Path) -> Resu
     }
 }
 
-fn toml_string_values(toml: &str, key: &str) -> Vec<String> {
-    let prefix = format!("{key} = ");
-    let mut values = Vec::new();
-    for line in toml.lines() {
-        let line = line.trim();
-        if !line.starts_with(&prefix) {
-            continue;
-        }
-        let value = line[prefix.len()..].trim();
-        if value.len() >= 2 && value.starts_with('"') && value.ends_with('"') {
-            let mut out = String::new();
-            let mut chars = value[1..value.len() - 1].chars();
-            while let Some(c) = chars.next() {
-                if c == '\\' {
-                    match chars.next() {
-                        Some('\\') => out.push('\\'),
-                        Some('"') => out.push('"'),
-                        Some(other) => out.push(other),
-                        None => {}
-                    }
-                } else {
-                    out.push(c);
-                }
-            }
-            values.push(out);
-        }
-    }
-    values
+fn toml_str(table: &toml::Table, key: &str) -> Option<String> {
+    table.get(key).and_then(|v| v.as_str().map(String::from))
 }
 
-fn toml_string_value(toml: &str, key: &str) -> Option<String> {
-    toml_string_values(toml, key).into_iter().next()
+fn image_dirs(dataset: &toml::Table) -> Vec<String> {
+    let datasets: Vec<&toml::Value> = match dataset.get("datasets") {
+        Some(toml::Value::Array(items)) => items.iter().collect(),
+        Some(table @ toml::Value::Table(_)) => vec![table],
+        _ => Vec::new(),
+    };
+    datasets
+        .iter()
+        .filter_map(|ds| ds.get("subsets").and_then(toml::Value::as_array))
+        .flat_map(|subsets| subsets.iter())
+        .filter_map(|subset| subset.get("image_dir").and_then(toml::Value::as_str))
+        .map(String::from)
+        .collect()
 }
 
 #[tauri::command]
-fn init_state(app: AppHandle) -> InitState {
-    let config = read_config(&app);
-    let git = cmd_ok("git", &["--version"], None);
-    let uv = cmd_ok("uv", &["--version"], None);
-    let sd_scripts = scripts_state(&config.installation).installed();
-    InitState {
-        config,
-        git,
-        uv,
-        sd_scripts,
-        default_installation: default_installation(&app),
-    }
+async fn init_state(app: AppHandle) -> InitState {
+    tauri::async_runtime::spawn_blocking(move || {
+        let config = read_config(&app);
+        InitState {
+            git: cmd_ok("git", &["--version"], None),
+            uv: cmd_ok("uv", &["--version"], None),
+            sd_scripts: scripts_state(&config.installation).installed(),
+            default_installation: default_installation(&app),
+            config,
+        }
+    })
+    .await
+    .unwrap_or_default()
 }
 
 #[tauri::command]
-fn check_installation(path: String) -> bool {
-    scripts_state(&path).installed()
+async fn check_installation(path: String) -> bool {
+    tauri::async_runtime::spawn_blocking(move || scripts_state(&path).installed())
+        .await
+        .unwrap_or(false)
 }
 
 #[tauri::command]
@@ -270,7 +251,7 @@ fn is_directory(path: String) -> bool {
 
 #[tauri::command]
 fn read_file(path: String) -> Result<String, String> {
-    fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {e}"))
+    fs::read_to_string(&path).map_err(|e| format!("failed to read file: {e}"))
 }
 
 #[tauri::command]
@@ -290,10 +271,10 @@ fn list_subdirectories(path: String) -> Result<Vec<String>, String> {
 fn install(app: AppHandle, path: String) -> Result<(), String> {
     let target = PathBuf::from(&path);
     if target.as_os_str().is_empty() {
-        return Err("Installation path is empty".into());
+        return Err("installation path is empty".into());
     }
     if target.is_file() {
-        return Err("Installation path points to a file".into());
+        return Err("installation path points to a file".into());
     }
 
     let scripts = scripts_state(&path);
@@ -312,10 +293,10 @@ fn install(app: AppHandle, path: String) -> Result<(), String> {
         let parent = target
             .parent()
             .filter(|p| !p.as_os_str().is_empty())
-            .ok_or("Installation path has no parent directory")?;
+            .ok_or("installation path has no parent directory")?;
         let name = target
             .file_name()
-            .ok_or("Installation path has no folder name")?
+            .ok_or("installation path has no folder name")?
             .to_string_lossy()
             .to_string();
         (parent.to_path_buf(), Some(name), target.clone())
@@ -442,8 +423,7 @@ fn kill_pid(pid: u32) {
     }
 }
 
-// Stops the training (the python child) without closing the console window,
-// so the window falls through to its `pause` and the logs stay readable.
+// Kill python children so the console falls through to `pause` and logs stay readable
 fn kill_training_children(pid: u32) {
     #[cfg(windows)]
     {
@@ -476,57 +456,60 @@ fn start_training(
     app: AppHandle,
     state: State<'_, TrainState>,
     install_path: String,
-    mut toml: String,
+    toml: String,
     dataset_toml: String,
 ) -> Result<(), String> {
     let install = PathBuf::from(&install_path);
     if !install.is_dir() {
-        return Err("Installation path is not set or does not exist".into());
+        return Err("installation path is not set or does not exist".into());
     }
     let python = venv_python(&install);
     if !python.is_file() {
-        return Err("Virtual environment not found in the installation path".into());
+        return Err("virtual environment not found in the installation path".into());
     }
     let script = install.join("anima_train_network.py");
     if !script.is_file() {
         return Err("anima_train_network.py not found in the installation path".into());
     }
 
-    if let Some(checkpoint) = toml_string_value(&toml, "pretrained_model_name_or_path") {
+    let mut params: toml::Table =
+        toml::from_str(&toml).map_err(|e| format!("invalid parameters: {e}"))?;
+    let dataset: toml::Table =
+        toml::from_str(&dataset_toml).map_err(|e| format!("invalid dataset config: {e}"))?;
+
+    if let Some(checkpoint) = toml_str(&params, "pretrained_model_name_or_path") {
         if !Path::new(&checkpoint).is_file() {
-            return Err(format!("Checkpoint not found: {checkpoint}"));
+            return Err(format!("checkpoint not found: {checkpoint}"));
         }
     }
-    let image_dirs = toml_string_values(&dataset_toml, "image_dir");
+    let image_dirs = image_dirs(&dataset);
     if image_dirs.is_empty() {
-        return Err("No dataset entries to train".into());
+        return Err("no dataset entries to train".into());
     }
     for image_dir in &image_dirs {
         if !Path::new(image_dir).is_dir() {
-            return Err(format!("Dataset directory not found: {image_dir}"));
+            return Err(format!("dataset directory not found: {image_dir}"));
         }
     }
-    if let Some(output) = toml_string_value(&toml, "output_dir") {
+    if let Some(output) = toml_str(&params, "output_dir") {
         fs::create_dir_all(&output).map_err(|e| e.to_string())?;
     }
 
-    if let Some(vae) = toml_string_value(&toml, "vae") {
-        if let Ok(meta) = fs::metadata(&vae) {
-            if meta.len() < VAE_2D_MAX_SIZE {
-                toml.push_str("qwen_image_vae_2d = true\n");
-            }
+    if let Some(vae) = toml_str(&params, "vae") {
+        if matches!(fs::metadata(&vae), Ok(meta) if meta.len() < VAE_2D_MAX_SIZE) {
+            params.insert("qwen_image_vae_2d".to_string(), toml::Value::Boolean(true));
         }
     }
 
     let stamp = timestamp();
     let dir = training_dir(&app)?;
     let param_file = dir.join(format!("{stamp}-P.toml"));
-    fs::write(&param_file, &toml).map_err(|e| e.to_string())?;
+    let param_body = toml::to_string(&params).map_err(|e| e.to_string())?;
+    fs::write(&param_file, param_body).map_err(|e| e.to_string())?;
     let dataset_file = dir.join(format!("{stamp}-D.toml"));
     fs::write(&dataset_file, &dataset_toml).map_err(|e| e.to_string())?;
 
-    // A previous run may have finished but left its console open (paused).
-    // Kill that console before starting a fresh process.
+    // Kill a lingering paused console from a previous run
     let lingering = {
         let mut guard = state.lock().map_err(|e| e.to_string())?;
         guard.take()
@@ -538,7 +521,13 @@ fn start_training(
     #[cfg(windows)]
     {
         let marker = dir.join(format!("{stamp}.exit"));
-        let _ = fs::remove_file(&marker);
+        if let Ok(entries) = fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                if entry.path().extension().is_some_and(|ext| ext == "exit") {
+                    let _ = fs::remove_file(entry.path());
+                }
+            }
+        }
         let bat = app
             .path()
             .resolve(format!("yakisoba-{stamp}.bat"), BaseDirectory::Temp)
@@ -556,11 +545,11 @@ fn start_training(
         use std::os::windows::process::CommandExt;
         let mut cmd = Command::new("cmd");
         cmd.args(["/C", &bat.to_string_lossy()]);
-        cmd.creation_flags(0x0000_0010); // CREATE_NEW_CONSOLE so the training logs are visible
+        cmd.creation_flags(0x0000_0010); // CREATE_NEW_CONSOLE: keep training logs visible
 
         let child = cmd
             .spawn()
-            .map_err(|e| format!("Failed to start training: {e}"))?;
+            .map_err(|e| format!("failed to start training: {e}"))?;
         let pid = child.id();
         *state.lock().map_err(|e| e.to_string())? = Some(pid);
         let _ = app.emit("train-status", true);
@@ -588,6 +577,7 @@ fn start_training(
                         let _ = app.emit("train-status", false);
                     }
                 }
+                let _ = fs::remove_file(&marker);
                 let _ = child.wait();
             }
 
@@ -616,7 +606,7 @@ fn start_training(
 
         let child = cmd
             .spawn()
-            .map_err(|e| format!("Failed to start training: {e}"))?;
+            .map_err(|e| format!("failed to start training: {e}"))?;
         let pid = child.id();
         *state.lock().map_err(|e| e.to_string())? = Some(pid);
         let _ = app.emit("train-status", true);
@@ -642,15 +632,18 @@ fn start_training(
 }
 
 #[tauri::command]
-fn terminate_training(state: State<'_, TrainState>) -> Result<(), String> {
-    let pid = *state.lock().map_err(|e| e.to_string())?;
-    if let Some(pid) = pid {
+async fn terminate_training(state: State<'_, TrainState>) -> Result<(), String> {
+    let Some(pid) = *state.lock().map_err(|e| e.to_string())? else {
+        return Ok(());
+    };
+    tauri::async_runtime::spawn_blocking(move || {
         #[cfg(windows)]
         kill_training_children(pid);
         #[cfg(not(windows))]
         kill_pid(pid);
-    }
-    Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
