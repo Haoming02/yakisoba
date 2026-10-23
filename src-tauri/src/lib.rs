@@ -307,7 +307,7 @@ fn install(app: AppHandle, path: String) -> Result<(), String> {
                 let mut clone_args: Vec<&str> = vec![
                     "clone",
                     "--branch",
-                    "v0.12.0",
+                    "v0.12.2",
                     "--depth",
                     "1",
                     "--filter",

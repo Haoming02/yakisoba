@@ -53,6 +53,7 @@ const PARAM_GROUPS = [
       { key: "network_alpha", label: "Network Alpha", type: "int", default: 4 },
       { key: "network_dropout", label: "Network Dropout", type: "float", default: 0.0 },
       { key: "network_train_unet_only", label: "Train DiT Only", type: "bool", default: true, disabled: true },
+      { key: "include_patterns", label: "Train adaLN", type: "bool", default: false },
     ],
   },
   {
@@ -692,7 +693,11 @@ function buildToml() {
       const el = $(`param-${field.key}`);
       if (!el) continue;
       if (field.type === "bool") {
-        lines.push(`${field.key} = ${tomlValue(field, el.checked)}`);
+        if (field.key === "include_patterns") {
+          if (el.checked) lines.push("include_patterns = ['.*adaln.*']");
+        } else {
+          lines.push(`${field.key} = ${tomlValue(field, el.checked)}`);
+        }
         continue;
       }
       const raw = el.value;
